@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "LiveScribe",
+  "version": "0.1.0",
+  "description": "Real-time transcription for video calls",
+  "permissions": ["tabCapture", "activeTab", "offscreen", "alarms"],
+  "host_permissions": ["http://localhost:3001/*", "ws://localhost:3001/*"],
+  "background": {
+    "service_worker": "src/background/service-worker.ts",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "src/popup/index.html",
+    "default_title": "LiveScribe"
+  }
+}
