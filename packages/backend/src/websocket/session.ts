@@ -1,5 +1,7 @@
 import type { WebSocket } from '@fastify/websocket';
 import { randomUUID } from 'crypto';
+import { writeFileSync, mkdirSync } from 'fs';
+import { join } from 'path';
 
 interface Session {
   id: string;
@@ -7,6 +9,7 @@ interface Session {
   createdAt: number;
   audioChunksReceived: number;
   totalBytesReceived: number;
+  audioChunks: Buffer[];
 }
 
 export class SessionManager {
@@ -21,6 +24,7 @@ export class SessionManager {
       createdAt: Date.now(),
       audioChunksReceived: 0,
       totalBytesReceived: 0,
+      audioChunks: [],
     };
 
     this.sessions.set(sessionId, session);
@@ -39,16 +43,79 @@ export class SessionManager {
         `Chunks: ${session.audioChunksReceived},`,
         `Total bytes: ${session.totalBytesReceived}`
       );
+
+      // Save audio to WAV file if we have chunks
+      if (session.audioChunks.length > 0) {
+        try {
+          const wavFile = this.saveAudioToWav(sessionId, session.audioChunks);
+          console.log(`Audio saved to: ${wavFile}`);
+        } catch (err) {
+          console.error(`Failed to save audio for session ${sessionId}:`, err);
+        }
+      }
+
       return this.sessions.delete(sessionId);
     }
     return false;
   }
 
-  logAudioChunk(sessionId: string, byteLength: number): void {
+  private saveAudioToWav(sessionId: string, audioChunks: Buffer[]): string {
+    // Combine all audio chunks
+    const totalLength = audioChunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    const audioData = Buffer.concat(audioChunks, totalLength);
+
+    // WAV file parameters
+    const sampleRate = 16000;
+    const numChannels = 1;
+    const bitsPerSample = 16;
+    const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
+    const blockAlign = numChannels * (bitsPerSample / 8);
+    const dataSize = audioData.length;
+    const fileSize = 36 + dataSize;
+
+    // Create WAV header
+    const header = Buffer.alloc(44);
+    header.write('RIFF', 0);
+    header.writeUInt32LE(fileSize, 4);
+    header.write('WAVE', 8);
+    header.write('fmt ', 12);
+    header.writeUInt32LE(16, 16); // fmt chunk size
+    header.writeUInt16LE(1, 20); // audio format (PCM)
+    header.writeUInt16LE(numChannels, 22);
+    header.writeUInt32LE(sampleRate, 24);
+    header.writeUInt32LE(byteRate, 28);
+    header.writeUInt16LE(blockAlign, 32);
+    header.writeUInt16LE(bitsPerSample, 34);
+    header.write('data', 36);
+    header.writeUInt32LE(dataSize, 40);
+
+    // Combine header and audio data
+    const wavBuffer = Buffer.concat([header, audioData]);
+
+    // Create recordings directory if it doesn't exist
+    const recordingsDir = join(process.cwd(), 'recordings');
+    try {
+      mkdirSync(recordingsDir, { recursive: true });
+    } catch (err) {
+      // Directory might already exist
+    }
+
+    // Save file with timestamp
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `recording-${sessionId.slice(0, 8)}-${timestamp}.wav`;
+    const filepath = join(recordingsDir, filename);
+
+    writeFileSync(filepath, wavBuffer);
+
+    return filepath;
+  }
+
+  addAudioChunk(sessionId: string, audioBuffer: Buffer): void {
     const session = this.sessions.get(sessionId);
     if (session) {
+      session.audioChunks.push(audioBuffer);
       session.audioChunksReceived++;
-      session.totalBytesReceived += byteLength;
+      session.totalBytesReceived += audioBuffer.byteLength;
 
       // Log every 10 chunks
       if (session.audioChunksReceived % 10 === 0) {
@@ -56,6 +123,15 @@ export class SessionManager {
           `Session ${sessionId}: ${session.audioChunksReceived} chunks, ${session.totalBytesReceived} bytes total`
         );
       }
+    }
+  }
+
+  logAudioChunk(sessionId: string, byteLength: number): void {
+    // Deprecated: use addAudioChunk instead
+    const session = this.sessions.get(sessionId);
+    if (session) {
+      session.audioChunksReceived++;
+      session.totalBytesReceived += byteLength;
     }
   }
 

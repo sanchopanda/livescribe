@@ -41,9 +41,10 @@ export function registerWebSocketHandler(server: FastifyInstance) {
               `Received audio chunk: ${audioBuffer.byteLength} bytes, session: ${sessionId}`
             );
 
+            // Store audio chunk for saving to file
+            sessionManager.addAudioChunk(sessionId, audioBuffer);
+
             // TODO: Process audio (send to STT service)
-            // For MVP: just log the receipt
-            sessionManager.logAudioChunk(sessionId, audioBuffer.byteLength);
 
             break;
           }
