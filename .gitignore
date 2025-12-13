@@ -38,6 +38,11 @@ coverage/
 # Extension specific
 packages/extension/dist/
 packages/extension/.crx
+# Generated TypeScript files (should not be generated anymore)
+packages/extension/src/**/*.js
+packages/extension/src/**/*.d.ts
+packages/extension/src/**/*.js.map
+packages/extension/src/**/*.d.ts.map
 
 # Temporary files
 *.tmp

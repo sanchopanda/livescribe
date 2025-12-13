@@ -7,11 +7,14 @@
     "moduleResolution": "bundler",
     "types": ["chrome", "vite/client"],
     "baseUrl": ".",
+    "noEmit": true,
+    "composite": false,
     "paths": {
       "@/*": ["./src/*"],
       "@livescribe/shared": ["../shared/src"]
     }
   },
   "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"],
   "references": [{ "path": "../shared" }]
 }
