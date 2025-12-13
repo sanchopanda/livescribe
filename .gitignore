@@ -50,3 +50,18 @@ packages/extension/src/**/*.d.ts.map
 
 # Recordings
 packages/backend/recordings/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+packages/stt-service/models/
+*.egg-info/
+dist/
+build/

@@ -10,6 +10,8 @@ let mediaStream: MediaStream | null = null;
 let isCapturing = false;
 let contentSessionId: string | null = null;
 let ws: WebSocket | null = null;
+let transcriptText = '';
+let partialText = '';
 
 const WS_URL = 'ws://localhost:3001/ws';
 
@@ -66,6 +68,19 @@ function createUIWidget() {
         display: none;
       ">Stop</button>
     </div>
+    <div id="livescribe-transcript" style="
+      margin-top: 8px;
+      padding: 8px;
+      background: #f3f4f6;
+      border-radius: 4px;
+      font-size: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+      min-height: 40px;
+      display: none;
+    ">
+      <div id="livescribe-transcript-text" style="color: #374151; line-height: 1.5;"></div>
+    </div>
     <div id="livescribe-error" style="
       margin-top: 8px;
       padding: 6px;
@@ -82,6 +97,23 @@ function createUIWidget() {
   // Add event listeners
   document.getElementById('livescribe-start')?.addEventListener('click', handleStart);
   document.getElementById('livescribe-stop')?.addEventListener('click', handleStop);
+}
+
+// Update transcript display
+function updateTranscript() {
+  const transcriptDiv = document.getElementById('livescribe-transcript');
+  const transcriptTextDiv = document.getElementById('livescribe-transcript-text');
+  
+  if (!transcriptDiv || !transcriptTextDiv) return;
+
+  const fullText = transcriptText + (partialText ? ` <span style="color: #6b7280; font-style: italic;">${partialText}</span>` : '');
+  
+  if (fullText.trim()) {
+    transcriptTextDiv.innerHTML = fullText;
+    transcriptDiv.style.display = 'block';
+  } else {
+    transcriptDiv.style.display = 'none';
+  }
 }
 
 // Update UI status
@@ -253,6 +285,25 @@ async function connectWebSocket(): Promise<void> {
             status: message.status,
             sessionId: contentSessionId,
           });
+        } else if (message.type === 'partial') {
+          // Partial transcription
+          partialText = message.text;
+          updateTranscript();
+          chrome.runtime.sendMessage({
+            type: 'TRANSCRIPT_UPDATE',
+            text: message.text,
+            isFinal: false,
+          });
+        } else if (message.type === 'final') {
+          // Final transcription
+          transcriptText += (transcriptText ? ' ' : '') + message.text;
+          partialText = '';
+          updateTranscript();
+          chrome.runtime.sendMessage({
+            type: 'TRANSCRIPT_UPDATE',
+            text: message.text,
+            isFinal: true,
+          });
         }
       } catch (err) {
         console.error('Failed to parse message:', err);
@@ -337,9 +388,14 @@ async function handleStop() {
   stopCapture();
 
   if (contentSessionId && ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'stop', sessionId: contentSessionId }));
-      contentSessionId = null;
+    ws.send(JSON.stringify({ type: 'stop', sessionId: contentSessionId }));
+    contentSessionId = null;
   }
+
+  // Clear transcript when stopping
+  transcriptText = '';
+  partialText = '';
+  updateTranscript();
 
   updateStatus('idle');
   chrome.runtime.sendMessage({ type: 'CONTENT_STATUS_UPDATE', status: 'idle' });

@@ -368,6 +368,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return false;
   }
 
+  if (message.type === 'TRANSCRIPT_UPDATE') {
+    // Transcript update from content script
+    notifyPopup({
+      type: 'TRANSCRIPT_UPDATE',
+      text: message.text,
+      isFinal: message.isFinal,
+    });
+    return false;
+  }
+
   if (message.type === 'DISCONNECT') {
     sendToOffscreen({ type: 'OFFSCREEN_DISCONNECT' })
       .then((response) => {

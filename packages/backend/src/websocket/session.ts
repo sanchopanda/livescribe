@@ -2,6 +2,7 @@ import type { WebSocket } from '@fastify/websocket';
 import { randomUUID } from 'crypto';
 import { writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
+import type { STTProvider } from '../stt/types.js';
 
 interface Session {
   id: string;
@@ -10,12 +11,14 @@ interface Session {
   audioChunksReceived: number;
   totalBytesReceived: number;
   audioChunks: Buffer[];
+  sttProvider: STTProvider | null;
+  language: string;
 }
 
 export class SessionManager {
   private sessions: Map<string, Session> = new Map();
 
-  createSession(connection: WebSocket): string {
+  createSession(connection: WebSocket, sttProvider: STTProvider, language: string): string {
     const sessionId = randomUUID();
 
     const session: Session = {
@@ -25,6 +28,8 @@ export class SessionManager {
       audioChunksReceived: 0,
       totalBytesReceived: 0,
       audioChunks: [],
+      sttProvider,
+      language,
     };
 
     this.sessions.set(sessionId, session);
@@ -35,7 +40,11 @@ export class SessionManager {
     return this.sessions.get(sessionId);
   }
 
-  destroySession(sessionId: string): boolean {
+  getSession(sessionId: string): Session | undefined {
+    return this.sessions.get(sessionId);
+  }
+
+  async destroySession(sessionId: string): Promise<boolean> {
     const session = this.sessions.get(sessionId);
     if (session) {
       console.log(
@@ -43,6 +52,19 @@ export class SessionManager {
         `Chunks: ${session.audioChunksReceived},`,
         `Total bytes: ${session.totalBytesReceived}`
       );
+
+      // Finalize STT and get last transcription
+      if (session.sttProvider) {
+        try {
+          const finalResult = await session.sttProvider.finalize();
+          if (finalResult) {
+            console.log(`Final transcription: ${finalResult.text}`);
+          }
+          await session.sttProvider.destroy();
+        } catch (err) {
+          console.error(`Failed to finalize STT for session ${sessionId}:`, err);
+        }
+      }
 
       // Save audio to WAV file if we have chunks
       if (session.audioChunks.length > 0) {

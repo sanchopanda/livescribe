@@ -2,8 +2,18 @@ import { useEffect, useState } from 'react';
 import { useAppStore } from '../store/state';
 
 function App() {
-  const { status, sessionId, errorMessage, setStatus, setSessionId, setError, setRecording } =
-    useAppStore();
+  const {
+    status,
+    sessionId,
+    errorMessage,
+    transcripts,
+    setStatus,
+    setSessionId,
+    setError,
+    setRecording,
+    addTranscript,
+    clearTranscripts,
+  } = useAppStore();
   const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
@@ -48,11 +58,15 @@ function App() {
           setRecording(true);
           // Clear error when recording starts successfully
           setError(null);
+          // Clear old transcripts when starting new recording
+          clearTranscripts();
         } else {
           setRecording(false);
         }
       } else if (message.type === 'ERROR') {
         setError(message.message);
+      } else if (message.type === 'TRANSCRIPT_UPDATE') {
+        addTranscript(message.text, message.isFinal);
       }
     };
 
@@ -191,6 +205,28 @@ function App() {
           </button>
         )}
       </div>
+
+      {/* Transcripts */}
+      {transcripts.length > 0 && (
+        <div className="mt-4 pt-4 border-t border-gray-200">
+          <h2 className="text-sm font-semibold text-gray-700 mb-2">Transcript</h2>
+          <div className="max-h-64 overflow-y-auto space-y-2">
+            {transcripts.map((item, index) => (
+              <div
+                key={index}
+                className={`text-sm p-2 rounded ${
+                  item.isFinal ? 'bg-blue-50 text-gray-800' : 'bg-gray-50 text-gray-600 italic'
+                }`}
+              >
+                {item.text}
+                {!item.isFinal && (
+                  <span className="ml-2 text-xs text-gray-400">(processing...)</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Info */}
       <div className="mt-4 pt-4 border-t border-gray-200">

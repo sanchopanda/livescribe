@@ -18,6 +18,7 @@ npm run dev
 # Run individually
 npm run dev:backend    # Backend on ws://localhost:3001
 npm run dev:extension  # Extension build in watch mode
+npm run dev:stt        # Python STT service on http://localhost:3002
 
 # Build all packages
 npm run build
@@ -29,6 +30,19 @@ npm run type-check
 npm run lint
 ```
 
+### Python STT Service Setup
+
+```bash
+cd packages/stt-service
+pip install -r requirements.txt
+
+# Download Vosk models (see packages/stt-service/README.md)
+# Then run:
+python main.py
+# or
+uvicorn main:app --host 0.0.0.0 --port 3002
+```
+
 ### Loading the Extension in Chrome
 1. Build: `npm run build:extension`
 2. Navigate to `chrome://extensions`
@@ -37,7 +51,7 @@ npm run lint
 
 ## Architecture
 
-Monorepo using npm workspaces with three packages:
+Monorepo using npm workspaces with four packages:
 
 ### packages/shared
 TypeScript types shared between frontend and backend:
@@ -57,6 +71,13 @@ Node.js WebSocket server using Fastify:
 - `src/server.ts` - Fastify server setup with CORS and WebSocket plugin
 - `src/websocket/handler.ts` - WebSocket message routing (start/audio/stop)
 - `src/websocket/session.ts` - Session management and audio chunk logging
+- `src/stt/` - STT provider interface and implementations (Whisper, Vosk HTTP)
+
+### packages/stt-service
+Python microservice for Vosk speech recognition:
+- `main.py` - FastAPI service with Vosk integration
+- Communicates with Node.js backend via HTTP API
+- Handles model initialization, audio processing, and transcription
 
 ## WebSocket Protocol
 
@@ -75,4 +96,8 @@ Endpoint: `ws://localhost:3001/ws`
 
 ## Current Status
 
-MVP phase: Audio capture + WebSocket streaming is implemented. STT integration is pending.
+MVP phase: Audio capture + WebSocket streaming is implemented. STT integration:
+- **Vosk (Python)**: Implemented via HTTP microservice (`packages/stt-service/`)
+- **Whisper (Node.js)**: Placeholder (requires @xenova/transformers update)
+
+Set `STT_PROVIDER=vosk` in backend `.env` to use Vosk (default).
