@@ -53,6 +53,105 @@ function notifyPopup(message: object) {
   });
 }
 
+// Helper function for offscreen recording
+function startRecordingOffscreen(message: any, sendResponse: (response: any) => void) {
+  // If streamId is provided from popup, use it directly
+  if (message.streamId) {
+    sendToOffscreen({ type: 'OFFSCREEN_CONNECT' })
+      .then((connectResponse) => {
+        if (connectResponse && connectResponse.error) {
+          sendResponse({ error: connectResponse.error });
+          return;
+        }
+        
+        setTimeout(() => {
+          sendToOffscreen({ type: 'OFFSCREEN_START_SESSION', language: 'ru-RU' })
+            .then((sessionResponse) => {
+              if (sessionResponse && sessionResponse.error) {
+                sendResponse({ error: sessionResponse.error });
+                return;
+              }
+              
+              setTimeout(() => {
+                sendToOffscreen({ type: 'OFFSCREEN_START_CAPTURE', streamId: message.streamId })
+                  .then((response) => {
+                    if (!response.error) {
+                      currentStatus = 'recording';
+                      notifyPopup({ type: 'STATUS_UPDATE', status: currentStatus });
+                    }
+                    sendResponse(response);
+                  })
+                  .catch((err) => sendResponse({ error: err.message }));
+              }, 100);
+            })
+            .catch((err) => sendResponse({ error: err.message }));
+        }, 200);
+      })
+      .catch((err) => sendResponse({ error: err.message }));
+    return;
+  }
+
+  // Fallback: Get active tab and streamId in service worker
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (!tabs[0]?.id) {
+      sendResponse({ error: 'No active tab found' });
+      return;
+    }
+
+    chrome.tabCapture.getMediaStreamId(
+      { targetTabId: tabs[0].id },
+      (streamId) => {
+        if (chrome.runtime.lastError || !streamId) {
+          sendResponse({ error: chrome.runtime.lastError?.message || 'Failed to get media stream ID' });
+          return;
+        }
+
+        sendToOffscreen({ type: 'OFFSCREEN_CONNECT' })
+          .then(() => {
+            setTimeout(() => {
+              sendToOffscreen({ type: 'OFFSCREEN_START_SESSION', language: 'ru-RU' })
+                .then(() => {
+                  setTimeout(() => {
+                    sendToOffscreen({ type: 'OFFSCREEN_START_CAPTURE', streamId })
+                      .then((response) => {
+                        if (!response.error) {
+                          currentStatus = 'recording';
+                          notifyPopup({ type: 'STATUS_UPDATE', status: currentStatus });
+                        }
+                        sendResponse(response);
+                      })
+                      .catch((err) => sendResponse({ error: err.message }));
+                  }, 100);
+                })
+                .catch((err) => sendResponse({ error: err.message }));
+            }, 200);
+          })
+          .catch((err) => sendResponse({ error: err.message }));
+      }
+    );
+  });
+}
+
+// Helper function for stopping offscreen recording
+function stopRecordingOffscreen(sendResponse: (response: any) => void) {
+  sendToOffscreen({ type: 'OFFSCREEN_STOP_SESSION' })
+    .then(() => {
+      return sendToOffscreen({ type: 'OFFSCREEN_DISCONNECT' });
+    })
+    .then((response) => {
+      currentStatus = 'idle';
+      sessionId = null;
+      notifyPopup({ type: 'STATUS_UPDATE', status: currentStatus });
+      sendResponse(response);
+    })
+    .catch((err) => {
+      currentStatus = 'idle';
+      sessionId = null;
+      notifyPopup({ type: 'STATUS_UPDATE', status: currentStatus });
+      sendResponse({ error: err.message });
+    });
+}
+
 // Handle messages
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   // Ignore messages from offscreen document that are status updates
@@ -138,136 +237,135 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       return true;
     }
 
-    // If streamId is provided from popup, use it directly
-    // This is faster because popup has user action context
-    if (message.streamId) {
-      // First, ensure WebSocket is connected
-      sendToOffscreen({ type: 'OFFSCREEN_CONNECT' })
-        .then((connectResponse) => {
-          if (connectResponse && connectResponse.error) {
-            sendResponse({ error: connectResponse.error });
+    // Try content script first (no indicator)
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]?.id) {
+        chrome.tabs.sendMessage(
+          tabs[0].id,
+          { type: 'CONTENT_START' },
+          (response) => {
+            if (!chrome.runtime.lastError && response) {
+              if (response.error) {
+                sendResponse({ error: response.error });
+              } else {
+                currentStatus = 'recording';
+                notifyPopup({ type: 'STATUS_UPDATE', status: currentStatus });
+                sendResponse({ success: true });
+              }
+              return;
+            }
+
+            // Fallback to offscreen document (will show indicator)
+            startRecordingOffscreen(message, sendResponse);
+          }
+        );
+      } else {
+        startRecordingOffscreen(message, sendResponse);
+      }
+    });
+    return true;
+  }
+
+  if (message.type === 'STOP_RECORDING') {
+    // Try content script first
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]?.id) {
+        chrome.tabs.sendMessage(tabs[0].id, { type: 'CONTENT_STOP' }, (response) => {
+          if (!chrome.runtime.lastError && response) {
+            currentStatus = 'idle';
+            sessionId = null;
+            notifyPopup({ type: 'STATUS_UPDATE', status: currentStatus });
+            sendResponse({ success: true });
             return;
           }
-          
-          // Small delay to ensure connection is established
-          setTimeout(() => {
-            // Start WebSocket session
-            sendToOffscreen({ type: 'OFFSCREEN_START_SESSION', language: 'ru-RU' })
-              .then((sessionResponse) => {
-                if (sessionResponse && sessionResponse.error) {
-                  sendResponse({ error: sessionResponse.error });
-                  return;
-                }
-                
-                // Small delay to wait for session ID
-                setTimeout(() => {
-                  // Pass streamId to offscreen document and start capture
-                  sendToOffscreen({ type: 'OFFSCREEN_START_CAPTURE', streamId: message.streamId })
-                    .then((response) => {
-                      if (!response.error) {
-                        currentStatus = 'recording';
-                        notifyPopup({ type: 'STATUS_UPDATE', status: currentStatus });
-                      }
-                      sendResponse(response);
-                    })
-                    .catch((err) => sendResponse({ error: err.message }));
-                }, 100);
-              })
-              .catch((err) => sendResponse({ error: err.message }));
-          }, 200);
-        })
-        .catch((err) => sendResponse({ error: err.message }));
-      return true;
-    }
 
-    // Fallback: Get active tab and streamId in service worker (slower)
+          // Fallback to offscreen
+          stopRecordingOffscreen(sendResponse);
+        });
+      } else {
+        stopRecordingOffscreen(sendResponse);
+      }
+    });
+    return true;
+  }
+
+
+  if (message.type === 'GET_STATUS') {
+    // Try content script first, then offscreen
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]?.id) {
+        chrome.tabs.sendMessage(tabs[0].id, { type: 'CONTENT_GET_STATUS' }, (response) => {
+          if (!chrome.runtime.lastError && response) {
+            // Content script responded
+            currentStatus = response.status === 'recording' ? 'recording' : 'idle';
+            sessionId = response.sessionId || null;
+            sendResponse({ status: currentStatus, sessionId });
+            return;
+          }
+
+          // Fallback to offscreen
+          sendToOffscreen({ type: 'OFFSCREEN_GET_STATUS' })
+            .then((offscreenStatus) => {
+              if (offscreenStatus && !offscreenStatus.wsConnected && currentStatus === 'connected') {
+                console.log('WebSocket not connected but status is connected, fixing...');
+                currentStatus = 'idle';
+                sessionId = null;
+              }
+              sendResponse({ status: currentStatus, sessionId });
+            })
+            .catch(() => {
+              console.log('Could not reach offscreen, returning current status:', currentStatus);
+              sendResponse({ status: currentStatus, sessionId });
+            });
+        });
+      } else {
+        // No active tab, use offscreen
+        sendToOffscreen({ type: 'OFFSCREEN_GET_STATUS' })
+          .then((offscreenStatus) => {
+            if (offscreenStatus && !offscreenStatus.wsConnected && currentStatus === 'connected') {
+              currentStatus = 'idle';
+              sessionId = null;
+            }
+            sendResponse({ status: currentStatus, sessionId });
+          })
+          .catch(() => {
+            sendResponse({ status: currentStatus, sessionId });
+          });
+      }
+    });
+    return true;
+  }
+
+  if (message.type === 'GET_STREAM_ID') {
+    // Get streamId for content script fallback
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (!tabs[0]?.id) {
         sendResponse({ error: 'No active tab found' });
         return;
       }
 
-      const tabId = tabs[0].id;
-
-      chrome.tabCapture.getMediaStreamId(
-        { targetTabId: tabId },
-        (streamId) => {
-          if (chrome.runtime.lastError || !streamId) {
-            sendResponse({ error: chrome.runtime.lastError?.message || 'Failed to get media stream ID' });
-            return;
-          }
-
-          // First, ensure WebSocket is connected
-          sendToOffscreen({ type: 'OFFSCREEN_CONNECT' })
-            .then(() => {
-              setTimeout(() => {
-                // Start WebSocket session
-                sendToOffscreen({ type: 'OFFSCREEN_START_SESSION', language: 'ru-RU' })
-                  .then(() => {
-                    setTimeout(() => {
-                      sendToOffscreen({ type: 'OFFSCREEN_START_CAPTURE', streamId })
-                        .then((response) => {
-                          if (!response.error) {
-                            currentStatus = 'recording';
-                            notifyPopup({ type: 'STATUS_UPDATE', status: currentStatus });
-                          }
-                          sendResponse(response);
-                        })
-                        .catch((err) => sendResponse({ error: err.message }));
-                    }, 100);
-                  })
-                  .catch((err) => sendResponse({ error: err.message }));
-              }, 200);
-            })
-            .catch((err) => sendResponse({ error: err.message }));
+      chrome.tabCapture.getMediaStreamId({ targetTabId: tabs[0].id }, (streamId) => {
+        if (chrome.runtime.lastError || !streamId) {
+          sendResponse({ error: chrome.runtime.lastError?.message || 'Failed to get stream ID' });
+          return;
         }
-      );
+        sendResponse({ streamId });
+      });
     });
     return true;
   }
 
-  if (message.type === 'STOP_RECORDING') {
-    // Stop session and disconnect
-    sendToOffscreen({ type: 'OFFSCREEN_STOP_SESSION' })
-      .then(() => {
-        // Disconnect WebSocket after stopping session
-        return sendToOffscreen({ type: 'OFFSCREEN_DISCONNECT' });
-      })
-      .then((response) => {
-        currentStatus = 'idle';
-        sessionId = null;
-        notifyPopup({ type: 'STATUS_UPDATE', status: currentStatus });
-        sendResponse(response);
-      })
-      .catch((err) => {
-        // Even if there's an error, update status
-        currentStatus = 'idle';
-        sessionId = null;
-        notifyPopup({ type: 'STATUS_UPDATE', status: currentStatus });
-        sendResponse({ error: err.message });
-      });
-    return true;
-  }
-
-  if (message.type === 'GET_STATUS') {
-    // Verify actual WebSocket status from offscreen
-    sendToOffscreen({ type: 'OFFSCREEN_GET_STATUS' })
-      .then((offscreenStatus) => {
-        // If WebSocket is not connected but status says connected, fix it
-        if (offscreenStatus && !offscreenStatus.wsConnected && currentStatus === 'connected') {
-          console.log('WebSocket not connected but status is connected, fixing...');
-          currentStatus = 'idle';
-          sessionId = null;
-        }
-        sendResponse({ status: currentStatus, sessionId });
-      })
-      .catch(() => {
-        // If we can't reach offscreen, return current status
-        // This might happen if offscreen document is not created yet
-        console.log('Could not reach offscreen, returning current status:', currentStatus);
-        sendResponse({ status: currentStatus, sessionId });
-      });
-    return true;
+  if (message.type === 'CONTENT_STATUS_UPDATE') {
+    // Status update from content script
+    const previousStatus = currentStatus;
+    currentStatus = message.status;
+    if (message.sessionId) {
+      sessionId = message.sessionId;
+    }
+    if (previousStatus !== currentStatus) {
+      notifyPopup({ type: 'STATUS_UPDATE', status: currentStatus, sessionId });
+    }
+    return false;
   }
 
   if (message.type === 'DISCONNECT') {

@@ -18,11 +18,15 @@ export default defineConfig({
     rollupOptions: {
       input: {
         offscreen: path.resolve(__dirname, 'src/offscreen/offscreen.ts'),
+        content: path.resolve(__dirname, 'src/content/content.ts'),
       },
       output: {
         entryFileNames: (chunkInfo) => {
           if (chunkInfo.name === 'offscreen') {
             return 'offscreen.js';
+          }
+          if (chunkInfo.name === 'content') {
+            return 'src/content/content.js';
           }
           return 'assets/[name]-[hash].js';
         },
