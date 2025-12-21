@@ -41,16 +41,19 @@ async function ensureOffscreen() {
 // Send message to offscreen document
 async function sendToOffscreen(message: object): Promise<any> {
   await ensureOffscreen();
-  return chrome.runtime.sendMessage(message);
-}
-
-// Notify popup about updates
-function notifyPopup(message: object) {
-  console.log('Notifying popup:', message);
-  chrome.runtime.sendMessage(message).catch((err) => {
-    // Popup might be closed - this is normal
-    console.log('Popup notification failed (popup might be closed):', err);
-  });
+  try {
+    return await chrome.runtime.sendMessage(message);
+  } catch (err: any) {
+    // If offscreen document was closed, reset flag
+    if (err.message?.includes('Receiving end does not exist')) {
+      console.log('Offscreen document was closed, resetting flag');
+      offscreenCreated = false;
+      // Try one more time after resetting
+      await ensureOffscreen();
+      return await chrome.runtime.sendMessage(message);
+    }
+    throw err;
+  }
 }
 
 // Helper function for offscreen recording
@@ -65,7 +68,7 @@ function startRecordingOffscreen(message: any, sendResponse: (response: any) => 
         }
         
         setTimeout(() => {
-          sendToOffscreen({ type: 'OFFSCREEN_START_SESSION', language: 'ru-RU' })
+          sendToOffscreen({ type: 'OFFSCREEN_START_SESSION', language: message.language || 'ru-RU' })
             .then((sessionResponse) => {
               if (sessionResponse && sessionResponse.error) {
                 sendResponse({ error: sessionResponse.error });
@@ -77,7 +80,6 @@ function startRecordingOffscreen(message: any, sendResponse: (response: any) => 
                   .then((response) => {
                     if (!response.error) {
                       currentStatus = 'recording';
-                      notifyPopup({ type: 'STATUS_UPDATE', status: currentStatus });
                     }
                     sendResponse(response);
                   })
@@ -109,14 +111,13 @@ function startRecordingOffscreen(message: any, sendResponse: (response: any) => 
         sendToOffscreen({ type: 'OFFSCREEN_CONNECT' })
           .then(() => {
             setTimeout(() => {
-              sendToOffscreen({ type: 'OFFSCREEN_START_SESSION', language: 'ru-RU' })
+              sendToOffscreen({ type: 'OFFSCREEN_START_SESSION', language: message.language || 'ru-RU' })
                 .then(() => {
                   setTimeout(() => {
                     sendToOffscreen({ type: 'OFFSCREEN_START_CAPTURE', streamId })
                       .then((response) => {
                         if (!response.error) {
                           currentStatus = 'recording';
-                          notifyPopup({ type: 'STATUS_UPDATE', status: currentStatus });
                         }
                         sendResponse(response);
                       })
@@ -141,13 +142,11 @@ function stopRecordingOffscreen(sendResponse: (response: any) => void) {
     .then((response) => {
       currentStatus = 'idle';
       sessionId = null;
-      notifyPopup({ type: 'STATUS_UPDATE', status: currentStatus });
       sendResponse(response);
     })
     .catch((err) => {
       currentStatus = 'idle';
       sessionId = null;
-      notifyPopup({ type: 'STATUS_UPDATE', status: currentStatus });
       sendResponse({ error: err.message });
     });
 }
@@ -187,10 +186,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       // If status is already idle, don't change it (connection attempt failed, but we're already idle)
     }
     
-    // Only notify popup if status actually changed
+    // Only log if status actually changed
     if (previousStatus !== currentStatus) {
       console.log(`Status changed: ${previousStatus} -> ${currentStatus}`);
-      notifyPopup({ type: 'STATUS_UPDATE', status: currentStatus, sessionId });
     }
     return false;
   }
@@ -201,7 +199,17 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       sessionId = wsMessage.sessionId;
       currentStatus = wsMessage.status;
     }
-    notifyPopup({ type: 'STATUS_UPDATE', status: currentStatus, sessionId });
+
+    // Forward transcript messages to content script
+    if (wsMessage.type === 'partial' || wsMessage.type === 'final') {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs[0]?.id) {
+          chrome.tabs.sendMessage(tabs[0].id, { type: 'WS_MESSAGE', message: wsMessage }).catch(() => {
+            // Content script might not be ready, that's ok
+          });
+        }
+      });
+    }
     return false;
   }
 
@@ -209,12 +217,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     console.log('Capture status:', message.status);
     if (message.status === 'recording') {
       currentStatus = 'recording';
-      notifyPopup({ type: 'STATUS_UPDATE', status: currentStatus });
     } else if (message.status === 'stopped') {
       // Only update to idle if we were recording
       if (currentStatus === 'recording') {
         currentStatus = 'idle';
-        notifyPopup({ type: 'STATUS_UPDATE', status: currentStatus });
       }
     }
     return false;
@@ -237,55 +243,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       return true;
     }
 
-    // Try content script first (no indicator)
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]?.id) {
-        chrome.tabs.sendMessage(
-          tabs[0].id,
-          { type: 'CONTENT_START' },
-          (response) => {
-            if (!chrome.runtime.lastError && response) {
-              if (response.error) {
-                sendResponse({ error: response.error });
-              } else {
-                currentStatus = 'recording';
-                notifyPopup({ type: 'STATUS_UPDATE', status: currentStatus });
-                sendResponse({ success: true });
-              }
-              return;
-            }
-
-            // Fallback to offscreen document (will show indicator)
-            startRecordingOffscreen(message, sendResponse);
-          }
-        );
-      } else {
-        startRecordingOffscreen(message, sendResponse);
-      }
-    });
+    // Use offscreen document with tabCapture (user will hear audio)
+    startRecordingOffscreen(message, sendResponse);
     return true;
   }
 
   if (message.type === 'STOP_RECORDING') {
-    // Try content script first
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]?.id) {
-        chrome.tabs.sendMessage(tabs[0].id, { type: 'CONTENT_STOP' }, (response) => {
-          if (!chrome.runtime.lastError && response) {
-            currentStatus = 'idle';
-            sessionId = null;
-            notifyPopup({ type: 'STATUS_UPDATE', status: currentStatus });
-            sendResponse({ success: true });
-            return;
-          }
-
-          // Fallback to offscreen
-          stopRecordingOffscreen(sendResponse);
-        });
-      } else {
-        stopRecordingOffscreen(sendResponse);
-      }
-    });
+    // Stop recording via offscreen document
+    stopRecordingOffscreen(sendResponse);
     return true;
   }
 
@@ -357,24 +322,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message.type === 'CONTENT_STATUS_UPDATE') {
     // Status update from content script
-    const previousStatus = currentStatus;
     currentStatus = message.status;
     if (message.sessionId) {
       sessionId = message.sessionId;
-    }
-    if (previousStatus !== currentStatus) {
-      notifyPopup({ type: 'STATUS_UPDATE', status: currentStatus, sessionId });
     }
     return false;
   }
 
   if (message.type === 'TRANSCRIPT_UPDATE') {
-    // Transcript update from content script
-    notifyPopup({
-      type: 'TRANSCRIPT_UPDATE',
-      text: message.text,
-      isFinal: message.isFinal,
-    });
+    // Transcript update from content script - no longer needed
     return false;
   }
 
@@ -390,6 +346,44 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   return false;
+});
+
+// Handle extension icon click - toggle widget visibility
+chrome.action.onClicked.addListener(async (tab) => {
+  if (!tab.id) {
+    console.error('No tab ID available');
+    return;
+  }
+  
+  console.log('Extension icon clicked, tab ID:', tab.id);
+  
+  try {
+    // Send message to content script to toggle widget
+    const response = await chrome.tabs.sendMessage(tab.id, { type: 'CONTENT_TOGGLE_WIDGET' });
+    console.log('Widget toggled:', response);
+  } catch (err) {
+    console.error('Failed to toggle widget:', err);
+    // Content script might not be loaded, try to inject it
+    try {
+      console.log('Attempting to inject content script...');
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ['src/content/content.js'],
+      });
+      console.log('Content script injected, waiting before toggle...');
+      // Wait a bit and try again
+      setTimeout(async () => {
+        try {
+          const response = await chrome.tabs.sendMessage(tab.id!, { type: 'CONTENT_TOGGLE_WIDGET' });
+          console.log('Widget toggled after injection:', response);
+        } catch (e) {
+          console.error('Failed to toggle widget after injection:', e);
+        }
+      }, 500);
+    } catch (injectErr) {
+      console.error('Failed to inject content script:', injectErr);
+    }
+  }
 });
 
 // Keep service worker alive periodically

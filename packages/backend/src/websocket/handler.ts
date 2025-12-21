@@ -1,11 +1,15 @@
 import type { FastifyInstance } from 'fastify';
-import type { SocketStream } from '@fastify/websocket';
 import type { ClientMessage, ServerMessage } from '@livescribe/shared';
 import { SessionManager } from './session.js';
 import { createSTTProvider } from '../stt/index.js';
 
 const sessionManager = new SessionManager();
-const STT_PROVIDER_TYPE = (process.env.STT_PROVIDER as 'whisper' | 'vosk') || 'vosk';
+
+// Get STT provider type - read from env at runtime, not at module load
+// This ensures dotenv.config() has been called first
+function getSTTProviderType(): 'vosk' | 'deepgram' {
+  return (process.env.STT_PROVIDER as 'vosk' | 'deepgram') || 'vosk';
+}
 
 export function registerWebSocketHandler(server: FastifyInstance) {
   server.get('/ws', { websocket: true }, (connection, req) => {
@@ -24,11 +28,36 @@ export function registerWebSocketHandler(server: FastifyInstance) {
             // Create STT provider (optional - audio will still be saved even if STT fails)
             let sttProvider: any = null;
             try {
-              sttProvider = createSTTProvider(STT_PROVIDER_TYPE);
-              await sttProvider.initialize(language);
-              server.log.info(`STT provider (${STT_PROVIDER_TYPE}) initialized for language: ${language}`);
+              const providerType = getSTTProviderType();
+              server.log.info(`Using STT provider: ${providerType} (from env: ${process.env.STT_PROVIDER || 'not set'})`);
+              sttProvider = createSTTProvider(providerType);
+              
+              // Create callback for real-time transcriptions (for streaming providers like Deepgram)
+              const onResult = (result: any) => {
+                const transcriptMessage: ServerMessage = result.isFinal
+                  ? {
+                      type: 'final',
+                      text: result.text,
+                      timestamp: Date.now(),
+                      confidence: result.confidence ?? 0,
+                    }
+                  : {
+                      type: 'partial',
+                      text: result.text,
+                      timestamp: Date.now(),
+                      confidence: result.confidence,
+                    };
+                connection.send(JSON.stringify(transcriptMessage));
+                server.log.debug(`Transcription (${result.isFinal ? 'final' : 'partial'}): ${result.text}`);
+              };
+              
+              await sttProvider.initialize(language, onResult);
+              server.log.info(`STT provider (${providerType}) initialized for language: ${language}`);
             } catch (err) {
-              server.log.warn(`STT provider initialization failed (audio will still be saved):`, err);
+              server.log.error(`STT provider initialization failed (audio will still be saved): ${(err as Error).message}`);
+              server.log.error(`STT initialization error details:`, err);
+              // Set sttProvider to null to ensure it's not used
+              sttProvider = null;
               // Continue without STT - audio will still be saved to files
               // Send warning to client
               const warningResponse: ServerMessage = {
@@ -74,10 +103,12 @@ export function registerWebSocketHandler(server: FastifyInstance) {
             // Store audio chunk for saving to file
             sessionManager.addAudioChunk(sessionId, audioBuffer);
 
-            // Process audio through STT (if available)
+            // Process audio through STT (if available and initialized)
             if (session.sttProvider) {
               try {
-                const sttResult = await session.sttProvider.processAudio(audioBuffer);
+                // Pass format information if available
+                const format = (message as any).format; // 'pcm' or 'ogg-opus'
+                const sttResult = await session.sttProvider.processAudio(audioBuffer, format);
               
               if (sttResult && sttResult.text) {
                 // Send transcription to client
@@ -86,7 +117,7 @@ export function registerWebSocketHandler(server: FastifyInstance) {
                       type: 'final',
                       text: sttResult.text,
                       timestamp: Date.now(),
-                      confidence: sttResult.confidence,
+                      confidence: sttResult.confidence ?? 0,
                     }
                   : {
                       type: 'partial',
@@ -102,9 +133,9 @@ export function registerWebSocketHandler(server: FastifyInstance) {
                 // Log error but don't fail - STT might not be available
                 const errorMsg = (err as Error).message;
                 if (!errorMsg.includes('not supported') && !errorMsg.includes('compatibility')) {
-                  server.log.error('STT processing error:', err);
+                  server.log.error(`STT processing error: ${errorMsg}`);
                 } else {
-                  server.log.warn('STT not available:', errorMsg);
+                  server.log.warn(`STT not available: ${errorMsg}`);
                 }
                 // Don't fail the connection, audio will still be saved
               }
@@ -132,7 +163,7 @@ export function registerWebSocketHandler(server: FastifyInstance) {
             server.log.warn(`Unknown message type: ${(message as any).type}`);
         }
       } catch (err) {
-        server.log.error('Error processing WebSocket message:', err);
+        server.log.error(`Error processing WebSocket message: ${(err as Error).message}`);
 
         const errorResponse: ServerMessage = {
           type: 'error',
@@ -153,7 +184,7 @@ export function registerWebSocketHandler(server: FastifyInstance) {
     });
 
     connection.on('error', async (err) => {
-      server.log.error('WebSocket error:', err);
+      server.log.error(`WebSocket error: ${(err as Error).message}`);
       if (sessionId) {
         await sessionManager.destroySession(sessionId);
       }

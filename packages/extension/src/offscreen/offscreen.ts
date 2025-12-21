@@ -153,7 +153,14 @@ async function processStream(stream: MediaStream) {
 
   mediaStream = stream;
 
-  // Create audio context
+  // IMPORTANT: Play back the captured audio so user can hear it
+  // Create an audio element and set its source to the captured stream
+  const audioElement = new Audio();
+  audioElement.srcObject = mediaStream;
+  audioElement.play().catch(err => console.warn('Failed to play back audio:', err));
+  console.log('Audio playback started via Audio element');
+
+  // Create audio context for processing (transcription)
   audioContext = new AudioContext({ sampleRate: 16000 });
 
   // Load worklet
@@ -179,9 +186,8 @@ async function processStream(stream: MediaStream) {
     }
   };
 
-  // Connect nodes
+  // Connect nodes - only for processing, not playback
   sourceNode.connect(workletNode);
-  workletNode.connect(audioContext.destination);
 
   console.log('Audio capture started');
   notifyServiceWorker({ type: 'CAPTURE_STATUS', status: 'recording' });

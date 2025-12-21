@@ -1,18 +1,16 @@
 // STT module - factory for creating STT providers
 
 import type { STTProvider, STTProviderType } from './types.js';
-import { WhisperSTT } from './whisper.js';
 import { VoskHTTPSTT } from './vosk-http.js';
-// import { VoskSTT } from './vosk.js'; // Direct Node.js implementation (requires native deps)
+import { DeepgramSTT } from './deepgram.js';
 
-export function createSTTProvider(type: STTProviderType = 'whisper'): STTProvider {
+export function createSTTProvider(type: STTProviderType = 'vosk'): STTProvider {
   switch (type) {
-    case 'whisper':
-      return new WhisperSTT();
-    
     case 'vosk':
-      // Use HTTP-based Vosk (Python service) instead of direct Node.js implementation
       return new VoskHTTPSTT();
+    
+    case 'deepgram':
+      return new DeepgramSTT();
     
     default:
       throw new Error(`Unsupported STT provider type: ${type}`);

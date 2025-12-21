@@ -97,7 +97,8 @@ Endpoint: `ws://localhost:3001/ws`
 ## Current Status
 
 MVP phase: Audio capture + WebSocket streaming is implemented. STT integration:
-- **Vosk (Python)**: Implemented via HTTP microservice (`packages/stt-service/`)
-- **Whisper (Node.js)**: Placeholder (requires @xenova/transformers update)
+- **Yandex SpeechKit (Cloud)**: ✅ Implemented - requires API key/IAM token
+- **Vosk (Python)**: ✅ Implemented via HTTP microservice (`packages/stt-service/`)
+- **Whisper (Node.js)**: ⚠️ Placeholder (requires @xenova/transformers update)
 
-Set `STT_PROVIDER=vosk` in backend `.env` to use Vosk (default).
+Set `STT_PROVIDER=yandex` or `STT_PROVIDER=vosk` in backend `.env` to choose provider.

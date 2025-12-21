@@ -1,7 +1,7 @@
 // Vosk STT implementation via HTTP API (Python service)
 // This allows using Python Vosk without native Node.js dependencies
 
-import type { STTProvider, STTResult } from './types.js';
+import type { STTProvider, STTResult, STTResultCallback } from './types.js';
 
 const STT_SERVICE_URL = process.env.STT_SERVICE_URL || 'http://localhost:3002';
 
@@ -9,7 +9,7 @@ export class VoskHTTPSTT implements STTProvider {
   private language: string = 'ru';
   private initialized = false;
 
-  async initialize(language: string): Promise<void> {
+  async initialize(language: string, _onResult?: STTResultCallback): Promise<void> {
     this.language = language;
 
     try {
@@ -32,7 +32,8 @@ export class VoskHTTPSTT implements STTProvider {
     }
   }
 
-  async processAudio(audioBuffer: Buffer): Promise<STTResult | null> {
+  async processAudio(audioBuffer: Buffer, format?: string): Promise<STTResult | null> {
+    // Vosk works with PCM only, ignore format parameter
     if (!this.initialized) {
       throw new Error('Vosk not initialized. Call initialize() first.');
     }

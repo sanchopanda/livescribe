@@ -7,19 +7,23 @@ export interface STTResult {
   language?: string;
 }
 
+export type STTResultCallback = (result: STTResult) => void;
+
 export interface STTProvider {
   /**
    * Initialize the STT provider
    * @param language Language code (e.g., 'ru-RU', 'en-US')
+   * @param onResult Optional callback for real-time transcription results (for streaming providers)
    */
-  initialize(language: string): Promise<void>;
+  initialize(language: string, onResult?: STTResultCallback): Promise<void>;
 
   /**
    * Process audio chunk and return transcription
-   * @param audioBuffer PCM audio data (Int16, 16kHz, mono)
-   * @returns Transcription result
+   * @param audioBuffer Audio data (PCM Int16 or OGG Opus, 16kHz, mono)
+   * @param format Optional format hint: 'pcm' or 'ogg-opus'/'webm-opus'
+   * @returns Transcription result (may be null if provider uses callback for async results)
    */
-  processAudio(audioBuffer: Buffer): Promise<STTResult | null>;
+  processAudio(audioBuffer: Buffer, format?: string): Promise<STTResult | null>;
 
   /**
    * Finalize current sentence/segment
@@ -33,5 +37,5 @@ export interface STTProvider {
   destroy(): Promise<void>;
 }
 
-export type STTProviderType = 'whisper' | 'vosk' | 'openai' | 'deepgram';
+export type STTProviderType = 'vosk' | 'deepgram';
 
