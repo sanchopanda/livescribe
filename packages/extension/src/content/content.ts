@@ -9,20 +9,10 @@ let transcriptText = '';
 let partialText = '';
 let isMinimized = false;
 
-// Language options
+// Language options (currently supported by Vosk STT)
 const LANGUAGES = [
-  { value: 'ru-RU', label: 'Russian (ru-RU)' },
-  { value: 'en-US', label: 'English (en-US)' },
-  { value: 'en-GB', label: 'English (en-GB)' },
-  { value: 'tr-TR', label: 'Turkish (tr-TR)' },
-  { value: 'es-ES', label: 'Spanish (es-ES)' },
-  { value: 'fr-FR', label: 'French (fr-FR)' },
-  { value: 'de-DE', label: 'German (de-DE)' },
-  { value: 'it-IT', label: 'Italian (it-IT)' },
-  { value: 'pt-BR', label: 'Portuguese (pt-BR)' },
-  { value: 'ja-JP', label: 'Japanese (ja-JP)' },
-  { value: 'ko-KR', label: 'Korean (ko-KR)' },
-  { value: 'zh-CN', label: 'Chinese (zh-CN)' },
+  { value: 'ru-RU', label: 'Russian' },
+  { value: 'en-US', label: 'English' },
 ];
 
 // Get selected language from localStorage with error handling
