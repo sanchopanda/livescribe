@@ -426,6 +426,7 @@ function updateStatus(status: 'idle' | 'recording' | 'error' | 'waiting', error?
   const startBtn = document.getElementById('livescribe-start');
   const stopBtn = document.getElementById('livescribe-stop');
   const errorDiv = document.getElementById('livescribe-error');
+  const languageSelect = document.getElementById('livescribe-language') as HTMLSelectElement | null;
 
   if (!statusDot || !statusText || !startBtn || !stopBtn || !errorDiv) return;
 
@@ -436,6 +437,11 @@ function updateStatus(status: 'idle' | 'recording' | 'error' | 'waiting', error?
       startBtn.style.display = 'none';
       stopBtn.style.display = 'block';
       errorDiv.style.display = 'none';
+      if (languageSelect) {
+        languageSelect.disabled = true;
+        languageSelect.style.opacity = '0.5';
+        languageSelect.style.cursor = 'not-allowed';
+      }
       break;
     case 'waiting':
       statusDot.style.background = '#f59e0b';
@@ -443,12 +449,22 @@ function updateStatus(status: 'idle' | 'recording' | 'error' | 'waiting', error?
       startBtn.style.display = 'none';
       stopBtn.style.display = 'none';
       errorDiv.style.display = 'none';
+      if (languageSelect) {
+        languageSelect.disabled = true;
+        languageSelect.style.opacity = '0.5';
+        languageSelect.style.cursor = 'not-allowed';
+      }
       break;
     case 'error':
       statusDot.style.background = '#ef4444';
       statusText.textContent = 'Error';
       startBtn.style.display = 'block';
       stopBtn.style.display = 'none';
+      if (languageSelect) {
+        languageSelect.disabled = false;
+        languageSelect.style.opacity = '1';
+        languageSelect.style.cursor = 'pointer';
+      }
       if (error) {
         errorDiv.textContent = error;
         errorDiv.style.display = 'block';
@@ -460,6 +476,11 @@ function updateStatus(status: 'idle' | 'recording' | 'error' | 'waiting', error?
       startBtn.style.display = 'block';
       stopBtn.style.display = 'none';
       errorDiv.style.display = 'none';
+      if (languageSelect) {
+        languageSelect.disabled = false;
+        languageSelect.style.opacity = '1';
+        languageSelect.style.cursor = 'pointer';
+      }
   }
 }
 
