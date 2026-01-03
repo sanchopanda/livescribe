@@ -66,6 +66,9 @@ Chrome Extension (Manifest V3) built with Vite + React + TypeScript:
 
 Audio capture flow: chrome.tabCapture → AudioContext → AudioWorklet → PCM Int16 → base64 → WebSocket
 
+**Content Scripts:** Currently limited to specific domains (Google Meet, Zoom, Teams, YouTube).
+TODO: Update `public/manifest.json` matches list when adding support for new video platforms.
+
 ### packages/backend
 Node.js WebSocket server using Fastify:
 - `src/server.ts` - Fastify server setup with CORS and WebSocket plugin
