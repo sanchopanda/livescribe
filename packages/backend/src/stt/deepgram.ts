@@ -7,6 +7,7 @@ import { createClient } from '@deepgram/sdk';
 export class DeepgramSTT implements STTProvider {
   private language: string = 'ru';
   private initialized = false;
+
   private deepgramClient: ReturnType<typeof createClient> | null = null;
   private connection: any = null;
   private onResultCallback: STTResultCallback | null = null;
@@ -26,28 +27,28 @@ export class DeepgramSTT implements STTProvider {
   private getLanguageCode(language: string): string {
     const langMap: Record<string, string> = {
       'ru': 'ru',
-      'ru-RU': 'ru',
+      'ru-ru': 'ru',
       'en': 'en',
-      'en-US': 'en',
-      'en-GB': 'en',
+      'en-us': 'en',
+      'en-gb': 'en',
       'tr': 'tr',
-      'tr-TR': 'tr',
+      'tr-tr': 'tr',
       'es': 'es',
-      'es-ES': 'es',
+      'es-es': 'es',
       'fr': 'fr',
-      'fr-FR': 'fr',
+      'fr-fr': 'fr',
       'de': 'de',
-      'de-DE': 'de',
+      'de-de': 'de',
       'it': 'it',
-      'it-IT': 'it',
+      'it-it': 'it',
       'pt': 'pt',
-      'pt-BR': 'pt',
+      'pt-br': 'pt',
       'ja': 'ja',
-      'ja-JP': 'ja',
+      'ja-jp': 'ja',
       'ko': 'ko',
-      'ko-KR': 'ko',
+      'ko-kr': 'ko',
       'zh': 'zh',
-      'zh-CN': 'zh',
+      'zh-cn': 'zh',
     };
 
     const lang = language.toLowerCase();

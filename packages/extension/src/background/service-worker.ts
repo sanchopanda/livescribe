@@ -153,7 +153,7 @@ function stopRecordingOffscreen(sendResponse: (response: any) => void) {
 
 // Handle messages
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  // Ignore messages from offscreen document that are status updates
+  // Status updates from offscreen document
   if (message.type === 'WS_STATUS') {
     console.log('WebSocket status:', message.status);
     const previousStatus = currentStatus;

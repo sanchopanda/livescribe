@@ -13,7 +13,8 @@
   "scripts": {
     "dev:extension": "npm run dev --workspace=@livescribe/extension",
     "dev:backend": "npm run dev --workspace=@livescribe/backend",
-    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:extension\"",
+    "dev": "concurrently --kill-others-on-fail --raw \"npm run dev:backend\" \"npm run dev:extension\"",
+    "dev:stop": "pkill -f 'tsx watch' && pkill -f 'vite build' || true",
     "build": "npm run build --workspaces",
     "build:extension": "npm run build --workspace=@livescribe/extension",
     "build:backend": "npm run build --workspace=@livescribe/backend",
