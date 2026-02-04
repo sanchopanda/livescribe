@@ -20,10 +20,26 @@
         "https://*.zoom.us/*",
         "https://teams.microsoft.com/*",
         "https://*.teams.microsoft.com/*",
+        "https://*.pachca.com/*",
+        "https://app.pachca.com/*",
         "https://www.youtube.com/*",
         "https://youtube.com/*"
       ],
       "js": ["src/content/content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "https://teams.microsoft.com/*",
+        "https://*.teams.microsoft.com/*",
+        "https://*.pachca.com/*",
+        "https://app.pachca.com/*",
+        "https://meet.google.com/*",
+        "https://zoom.us/*",
+        "https://*.zoom.us/*"
+      ],
+      "js": ["src/content/platform-research.js"],
       "run_at": "document_idle",
       "all_frames": false
     }

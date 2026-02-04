@@ -19,6 +19,7 @@ export default defineConfig({
       input: {
         offscreen: path.resolve(__dirname, 'src/offscreen/offscreen.ts'),
         content: path.resolve(__dirname, 'src/content/content.ts'),
+        'platform-research': path.resolve(__dirname, 'src/content/platform-research.ts'),
       },
       output: {
         entryFileNames: (chunkInfo) => {
@@ -27,6 +28,9 @@ export default defineConfig({
           }
           if (chunkInfo.name === 'content') {
             return 'src/content/content.js';
+          }
+          if (chunkInfo.name === 'platform-research') {
+            return 'src/content/platform-research.js';
           }
           return 'assets/[name]-[hash].js';
         },
