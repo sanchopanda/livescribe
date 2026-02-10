@@ -287,8 +287,7 @@ if (isActive) {
 **⚠️ Important Notes:**
 
 1. **This structure is for 1-on-1 calls**
-   - Multi-participant calls may have different DOM structure
-   - Need to research multi-participant layout separately
+   - Multi-participant calls have a different DOM structure (see next section)
 
 2. **Class names may be minified**
    - `css-kiy7mf-badgeContainer` and `css-1q78t7r-badge` look like CSS-in-JS generated classes
@@ -296,15 +295,76 @@ if (isActive) {
    - Consider using semantic selectors like `.stage-participant-label` as primary
 
 3. **Alternative selectors to try:**
-   - `#dominantSpeaker` - container for active speaker
-   - `[id*="dominantSpeaker"]` - fuzzy match
-   - Text content extraction from any child of `#dominantSpeaker`
+    - `#dominantSpeaker` - container for active speaker
+    - `[id*="dominantSpeaker"]` - fuzzy match
+    - Text content extraction from any child of `#dominantSpeaker`
+
+### Multi-participant Call Layout (filmstrip/sidebar)
+
+**Update:** 2026-02-10
+
+In calls with many participants, Pachca renders a *sidebar filmstrip* with remote videos.
+
+**Filmstrip container (example):**
+```css
+.filmstrip__videos.remote-videos
+```
+
+**Participant tile (example):**
+- Tile element is often a `span` with an `id` like `participant_<hash>`
+- Name is in a sibling/descendant element with predictable id: `participant_<hash>_name`
+
+```html
+<span class="videocontainer ... dominant-speaker" id="participant_3e1d9e3f">
+  ...
+  <span class="displayname ..." id="participant_3e1d9e3f_name">Азат Кабиров</span>
+  ...
+</span>
+```
+
+#### Active speaker detection (filmstrip)
+
+**Primary indicator:** class `dominant-speaker` on the participant tile.
+
+**Selector:**
+```js
+document.querySelector('.filmstrip__videos [id^="participant_"].dominant-speaker')
+```
+
+**Notes about stability:**
+- `dominant-speaker` looks semantic (good)
+- ignore `jss*` and `css-*` classes (unstable)
+
+#### Extracting speaker name (filmstrip)
+
+**Primary (stable) approach:** use the tile `id` to lookup `${id}_name`.
+
+```js
+function getActiveSpeakerFromFilmstrip() {
+  const tile = document.querySelector(
+    '.filmstrip__videos [id^="participant_"].dominant-speaker'
+  );
+  if (!tile) return null;
+
+  const id = tile.id;
+  const nameEl = document.getElementById(`${id}_name`) ?? tile.querySelector('.displayname');
+  const name = nameEl?.textContent?.trim() || null;
+
+  return { id, name, tile };
+}
+```
+
+#### Relationship with 1-on-1 detection
+
+If filmstrip is not present (or `dominant-speaker` is missing), fallback to the **1-on-1** logic:
+- `.dynamic-shadow` + `box-shadow` non-zero detection
+- name via `.stage-participant-label`
 
 ## Next Steps
 
-- [ ] Test with multiple participants in a call (PRIORITY)
+- [x] Test with multiple participants in a call (PRIORITY)
 - [x] Extract participant names/identifiers (1-on-1 only)
-- [ ] Research multi-participant DOM structure
+- [x] Research multi-participant DOM structure
 - [ ] Verify pattern works across different Pachca themes
 - [ ] Implement production speaker tracker
 - [ ] Confirm pattern stability across Pachca updates
