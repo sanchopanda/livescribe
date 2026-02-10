@@ -68,7 +68,11 @@ function startRecordingOffscreen(message: any, sendResponse: (response: any) => 
         }
         
         setTimeout(() => {
-          sendToOffscreen({ type: 'OFFSCREEN_START_SESSION', language: message.language || 'ru-RU' })
+          sendToOffscreen({
+            type: 'OFFSCREEN_START_SESSION',
+            language: message.language || 'ru-RU',
+            platform: message.platform,
+          })
             .then((sessionResponse) => {
               if (sessionResponse && sessionResponse.error) {
                 sendResponse({ error: sessionResponse.error });
@@ -111,7 +115,11 @@ function startRecordingOffscreen(message: any, sendResponse: (response: any) => 
         sendToOffscreen({ type: 'OFFSCREEN_CONNECT' })
           .then(() => {
             setTimeout(() => {
-              sendToOffscreen({ type: 'OFFSCREEN_START_SESSION', language: message.language || 'ru-RU' })
+              sendToOffscreen({
+                type: 'OFFSCREEN_START_SESSION',
+                language: message.language || 'ru-RU',
+                platform: message.platform,
+              })
                 .then(() => {
                   setTimeout(() => {
                     sendToOffscreen({ type: 'OFFSCREEN_START_CAPTURE', streamId })
@@ -246,6 +254,19 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     // Use offscreen document with tabCapture (user will hear audio)
     startRecordingOffscreen(message, sendResponse);
     return true;
+  }
+
+  if (message.type === 'SPEAKER_UPDATE') {
+    // Forward speaker updates to offscreen (it holds the WS connection)
+    sendToOffscreen({
+      type: 'OFFSCREEN_SPEAKER_UPDATE',
+      sessionId: message.sessionId,
+      speaker: message.speaker,
+      participantId: message.participantId,
+    }).catch(() => {
+      // ignore
+    });
+    return false;
   }
 
   if (message.type === 'STOP_RECORDING') {

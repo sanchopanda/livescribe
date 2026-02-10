@@ -8,10 +8,18 @@ export interface AudioChunkMessage {
   chunk: string; // base64 encoded PCM Int16
 }
 
+export interface SpeakerUpdateMessage {
+  type: 'speaker';
+  sessionId: string;
+  speaker: string | null;
+  participantId?: string;
+  timestamp?: number;
+}
+
 export interface StartSessionMessage {
   type: 'start';
   language: 'ru-RU' | 'en-US';
-  platform?: 'meet' | 'zoom' | 'teams';
+  platform?: 'meet' | 'zoom' | 'teams' | 'pachca';
 }
 
 export interface StopSessionMessage {
@@ -19,7 +27,11 @@ export interface StopSessionMessage {
   sessionId: string;
 }
 
-export type ClientMessage = AudioChunkMessage | StartSessionMessage | StopSessionMessage;
+export type ClientMessage =
+  | AudioChunkMessage
+  | SpeakerUpdateMessage
+  | StartSessionMessage
+  | StopSessionMessage;
 
 // Server → Client messages
 
@@ -40,6 +52,7 @@ export interface PartialTranscriptMessage {
   text: string;
   timestamp: number;
   confidence?: number;
+  speaker?: string;
 }
 
 export interface FinalTranscriptMessage {

@@ -13,6 +13,7 @@ interface Session {
   audioChunks: Buffer[];
   sttProvider: STTProvider | null;
   language: string;
+  speaker: string | null;
 }
 
 export class SessionManager {
@@ -30,14 +31,11 @@ export class SessionManager {
       audioChunks: [],
       sttProvider,
       language,
+      speaker: null,
     };
 
     this.sessions.set(sessionId, session);
     return sessionId;
-  }
-
-  getSession(sessionId: string): Session | undefined {
-    return this.sessions.get(sessionId);
   }
 
   getSession(sessionId: string): Session | undefined {

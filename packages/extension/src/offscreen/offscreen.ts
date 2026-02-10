@@ -291,7 +291,32 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         sendResponse({ error: 'WebSocket is not connected. Please connect first.' });
         return true;
       }
-      sendMessage({ type: 'start', language: message.language || 'ru-RU' });
+      sendMessage({
+        type: 'start',
+        language: message.language || 'ru-RU',
+        platform: message.platform,
+      } as any);
+      sendResponse({ success: true });
+      return true;
+
+    case 'OFFSCREEN_SPEAKER_UPDATE':
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        sendResponse({ error: 'WebSocket is not connected. Please connect first.' });
+        return true;
+      }
+      if (!message.sessionId) {
+        sendResponse({ error: 'No sessionId provided' });
+        return true;
+      }
+
+      sendMessage({
+        type: 'speaker',
+        sessionId: message.sessionId,
+        speaker: message.speaker ?? null,
+        participantId: message.participantId,
+        timestamp: Date.now(),
+      } as any);
+
       sendResponse({ success: true });
       return true;
 

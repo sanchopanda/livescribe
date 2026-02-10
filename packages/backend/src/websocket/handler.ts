@@ -12,7 +12,7 @@ function getSTTProviderType(): 'vosk' | 'deepgram' {
 }
 
 export function registerWebSocketHandler(server: FastifyInstance) {
-  server.get('/ws', { websocket: true }, (connection, req) => {
+  server.get('/ws', { websocket: true }, (connection, _req) => {
     let sessionId: string | null = null;
 
     server.log.info('WebSocket client connected');
@@ -55,7 +55,7 @@ export function registerWebSocketHandler(server: FastifyInstance) {
               server.log.info(`STT provider (${providerType}) initialized for language: ${language}`);
             } catch (err) {
               server.log.error(`STT provider initialization failed (audio will still be saved): ${(err as Error).message}`);
-              server.log.error(`STT initialization error details:`, err);
+              server.log.error(err, 'STT initialization error details');
               // Set sttProvider to null to ensure it's not used
               sttProvider = null;
               // Continue without STT - audio will still be saved to files
@@ -112,19 +112,21 @@ export function registerWebSocketHandler(server: FastifyInstance) {
               
               if (sttResult && sttResult.text) {
                 // Send transcription to client
-                const transcriptMessage: ServerMessage = sttResult.isFinal
-                  ? {
-                      type: 'final',
-                      text: sttResult.text,
-                      timestamp: Date.now(),
-                      confidence: sttResult.confidence ?? 0,
-                    }
-                  : {
-                      type: 'partial',
-                      text: sttResult.text,
-                      timestamp: Date.now(),
-                      confidence: sttResult.confidence,
-                    };
+                 const transcriptMessage: ServerMessage = sttResult.isFinal
+                   ? {
+                       type: 'final',
+                       text: sttResult.text,
+                       timestamp: Date.now(),
+                       confidence: sttResult.confidence ?? 0,
+                       speaker: session.speaker ?? undefined,
+                     }
+                   : {
+                       type: 'partial',
+                       text: sttResult.text,
+                       timestamp: Date.now(),
+                       confidence: sttResult.confidence,
+                       speaker: session.speaker ?? undefined,
+                     };
 
                 connection.send(JSON.stringify(transcriptMessage));
                 server.log.debug(`Transcription (${sttResult.isFinal ? 'final' : 'partial'}): ${sttResult.text}`);
@@ -141,6 +143,22 @@ export function registerWebSocketHandler(server: FastifyInstance) {
               }
             }
 
+            break;
+          }
+
+          case 'speaker': {
+            if (!sessionId) {
+              server.log.warn('Received speaker update without active session');
+              return;
+            }
+
+            const session = sessionManager.getSession(sessionId);
+            if (!session) {
+              server.log.warn('Received speaker update for missing session');
+              return;
+            }
+
+            session.speaker = message.speaker ?? null;
             break;
           }
 
