@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__chrome-devtools__evaluate_script",
+      "Bash(npm run build:extension:*)"
+    ]
+  }
+}

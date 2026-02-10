@@ -74,8 +74,6 @@ class PlatformSpeakerTracker {
       name: 'Google Meet',
       url: 'meet.google.com',
       selectors: [
-        '[jscontroller="YQvg8b"]', // Speaking indicator element
-        'img[src*="googleusercontent"]', // Participant avatars
         '[data-participant-id]',
         '[data-self-name]',
         '[jscontroller]',
@@ -98,11 +96,7 @@ class PlatformSpeakerTracker {
 
   // Common patterns to watch across all platforms
   private watchPatterns = {
-    classKeywords: [
-      'active', 'speaking', 'highlight', 'border', 'selected', 'focus', 'current', 'talking',
-      // Google Meet specific classes
-      'wEsLMd', 'sxlEM', 'BlxGDf', 'gjg47c'
-    ],
+    classKeywords: ['active', 'speaking', 'highlight', 'border', 'selected', 'focus', 'current', 'talking'],
     attributes: ['aria-label', 'aria-current', 'aria-selected', 'data-tid', 'class', 'style', 'data-participant-id'],
   };
 
