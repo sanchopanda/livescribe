@@ -1,6 +1,8 @@
 // Content script for LiveScribe widget UI
 // Audio capture is handled by service worker + offscreen document
 
+import { getPachcaActiveSpeaker } from './pachca-speaker-detector';
+
 console.log('LiveScribe content script loaded');
 
 let isCapturing = false;
@@ -8,6 +10,50 @@ let contentSessionId: string | null = null;
 let transcriptText = '';
 let partialText = '';
 let isMinimized = false;
+
+let currentSpeaker: string | null = null;
+let speakerIntervalId: number | null = null;
+
+function getPlatformForStartMessage(): 'meet' | 'zoom' | 'teams' | 'pachca' | undefined {
+  const host = window.location.hostname;
+  if (host.includes('pachca.com')) return 'pachca';
+  if (host.includes('meet.google.com')) return 'meet';
+  if (host.includes('zoom.us')) return 'zoom';
+  if (host.includes('teams.microsoft.com')) return 'teams';
+  return undefined;
+}
+
+function startSpeakerTracking(): void {
+  stopSpeakerTracking();
+
+  // Polling is simplest and works even when DOM updates are subtle.
+  speakerIntervalId = window.setInterval(() => {
+    if (!isCapturing || !contentSessionId) return;
+    if (!window.location.hostname.includes('pachca.com')) return;
+
+    const info = getPachcaActiveSpeaker();
+    const nextSpeaker = info?.speaker ?? null;
+
+    if (nextSpeaker === currentSpeaker) return;
+    currentSpeaker = nextSpeaker;
+
+    chrome.runtime.sendMessage({
+      type: 'SPEAKER_UPDATE',
+      sessionId: contentSessionId,
+      speaker: currentSpeaker,
+      participantId: info?.participantId,
+    }).catch(() => {
+      // service worker might be inactive
+    });
+  }, 250);
+}
+
+function stopSpeakerTracking(): void {
+  if (speakerIntervalId !== null) {
+    clearInterval(speakerIntervalId);
+    speakerIntervalId = null;
+  }
+}
 
 // Language options (currently supported by Vosk STT)
 const LANGUAGES = [
@@ -75,17 +121,6 @@ function saveWidgetSize(width: number, height: number): void {
     localStorage.setItem('livescribe-widget-size', JSON.stringify({ width, height }));
   } catch (err) {
     console.warn('Failed to save size to localStorage:', err);
-  }
-}
-
-// Get minimized state from localStorage with error handling
-function getMinimizedState(): boolean {
-  try {
-    const saved = localStorage.getItem('livescribe-widget-minimized');
-    return saved === 'true';
-  } catch (err) {
-    console.warn('Failed to access localStorage for minimized state:', err);
-    return false;
   }
 }
 
@@ -241,6 +276,7 @@ function createUIWidget() {
         min-height: 40px;
         display: none;
       ">
+        <div id="livescribe-speaker" style="color: #6b7280; font-size: 11px; margin-bottom: 6px; display: none;"></div>
         <div id="livescribe-transcript-text" style="color: #374151; line-height: 1.5; word-wrap: break-word;"></div>
       </div>
       <div id="livescribe-error" style="
@@ -406,12 +442,21 @@ function closeWidget(): void {
 function updateTranscript() {
   const transcriptDiv = document.getElementById('livescribe-transcript');
   const transcriptTextDiv = document.getElementById('livescribe-transcript-text');
+  const speakerDiv = document.getElementById('livescribe-speaker');
   
   if (!transcriptDiv || !transcriptTextDiv) return;
 
   const fullText = transcriptText + (partialText ? ` <span style="color: #6b7280; font-style: italic;">${partialText}</span>` : '');
   
   if (fullText.trim()) {
+    if (speakerDiv) {
+      if (currentSpeaker) {
+        speakerDiv.textContent = `Speaker: ${currentSpeaker}`;
+        speakerDiv.style.display = 'block';
+      } else {
+        speakerDiv.style.display = 'none';
+      }
+    }
     transcriptTextDiv.innerHTML = fullText;
     transcriptDiv.style.display = 'block';
   } else {
@@ -499,7 +544,7 @@ async function handleStart() {
     // Ask service worker to start recording using tabCapture + offscreen
     // Offscreen will handle WebSocket and forward transcripts to us
     chrome.runtime.sendMessage(
-      { type: 'START_RECORDING', language },
+      { type: 'START_RECORDING', language, platform: getPlatformForStartMessage() },
       (response) => {
         if (chrome.runtime.lastError) {
           console.error('Failed to start recording:', chrome.runtime.lastError);
@@ -516,6 +561,7 @@ async function handleStart() {
         // Success - service worker + offscreen will handle audio capture and transcripts
         isCapturing = true;
         updateStatus('recording');
+        startSpeakerTracking();
         console.log('Recording started via service worker + offscreen');
       }
     );
@@ -528,6 +574,7 @@ async function handleStart() {
 // Stop capture
 async function handleStop() {
   isCapturing = false;
+  stopSpeakerTracking();
 
   // Ask service worker to stop recording
   chrome.runtime.sendMessage({ type: 'STOP_RECORDING' }, () => {
@@ -540,6 +587,7 @@ async function handleStop() {
   // Clear transcript when stopping
   transcriptText = '';
   partialText = '';
+  currentSpeaker = null;
   updateTranscript();
 
   updateStatus('idle');
@@ -589,12 +637,18 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
     if (wsMessage.type === 'partial') {
       partialText = wsMessage.text || '';
+      if (typeof (wsMessage as any).speaker === 'string') {
+        currentSpeaker = (wsMessage as any).speaker;
+      }
       updateTranscript();
     } else if (wsMessage.type === 'final') {
       if (wsMessage.text) {
         transcriptText += (transcriptText ? ' ' : '') + wsMessage.text;
       }
       partialText = '';
+      if (typeof (wsMessage as any).speaker === 'string') {
+        currentSpeaker = (wsMessage as any).speaker;
+      }
       updateTranscript();
     } else if (wsMessage.type === 'status' && wsMessage.sessionId) {
       contentSessionId = wsMessage.sessionId;
