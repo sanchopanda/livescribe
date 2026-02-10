@@ -15,12 +15,12 @@
     "dev:backend": "npm run dev --workspace=@livescribe/backend",
     "dev": "concurrently --kill-others-on-fail --raw \"npm run dev:backend\" \"npm run dev:extension\"",
     "dev:stop": "pkill -f 'tsx watch' && pkill -f 'vite build' || true",
-    "build": "npm run build --workspaces",
+    "build": "npm run build --workspace=@livescribe/shared && npm run build --workspace=@livescribe/backend && npm run build --workspace=@livescribe/extension",
     "build:extension": "npm run build --workspace=@livescribe/extension",
     "build:backend": "npm run build --workspace=@livescribe/backend",
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
-    "type-check": "npm run type-check --workspaces --if-present",
+    "type-check": "npm run build --workspace=@livescribe/shared && npm run type-check --workspace=@livescribe/backend && npm run type-check --workspace=@livescribe/extension && npm run type-check --workspace=@livescribe/shared",
     "clean": "npm run clean --workspaces --if-present"
   },
   "devDependencies": {
