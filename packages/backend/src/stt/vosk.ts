@@ -9,19 +9,18 @@ import type { STTProvider, STTResult, STTResultCallback } from './types.js';
 
 export class VoskSTT implements STTProvider {
   private initialized = false;
-  private language: string = 'ru';
 
   async initialize(language: string, _onResult?: STTResultCallback): Promise<void> {
     // TODO: Initialize Vosk model
     // Example:
     // const modelPath = path.join(__dirname, '../../models/vosk-model-ru');
     // this.recognizer = new vosk.Recognizer({ model: new vosk.Model(modelPath), sampleRate: 16000 });
-    this.language = language;
+    void language;
     this.initialized = true;
     throw new Error('Vosk STT not yet implemented. Please use VoskHTTPSTT or Deepgram instead.');
   }
 
-  async processAudio(audioBuffer: Buffer): Promise<STTResult | null> {
+  async processAudio(_audioBuffer: Buffer): Promise<STTResult | null> {
     if (!this.initialized) {
       throw new Error('Vosk not initialized');
     }

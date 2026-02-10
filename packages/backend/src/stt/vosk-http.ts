@@ -20,8 +20,9 @@ export class VoskHTTPSTT implements STTProvider {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || `Failed to initialize STT service: ${response.statusText}`);
+        const errorBody: any = await response.json().catch(() => null);
+        const detail = typeof errorBody?.detail === 'string' ? errorBody.detail : null;
+        throw new Error(detail || `Failed to initialize STT service: ${response.statusText}`);
       }
 
       this.initialized = true;
@@ -32,8 +33,8 @@ export class VoskHTTPSTT implements STTProvider {
     }
   }
 
-  async processAudio(audioBuffer: Buffer, format?: string): Promise<STTResult | null> {
-    // Vosk works with PCM only, ignore format parameter
+  async processAudio(audioBuffer: Buffer, _format?: string): Promise<STTResult | null> {
+    // Vosk works with PCM only
     if (!this.initialized) {
       throw new Error('Vosk not initialized. Call initialize() first.');
     }
@@ -53,18 +54,18 @@ export class VoskHTTPSTT implements STTProvider {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        console.error('STT processing error:', error);
+        const errorBody: any = await response.json().catch(() => null);
+        console.error('STT processing error:', errorBody);
         return null;
       }
 
-      const result = await response.json();
+      const result: any = await response.json();
 
-      if (result.text && result.text.trim()) {
+      if (typeof result?.text === 'string' && result.text.trim()) {
         return {
           text: result.text.trim(),
-          isFinal: result.is_final || false,
-          confidence: result.confidence || undefined,
+          isFinal: Boolean(result.is_final),
+          confidence: typeof result.confidence === 'number' ? result.confidence : undefined,
           language: this.language,
         };
       }
@@ -92,13 +93,13 @@ export class VoskHTTPSTT implements STTProvider {
         return null;
       }
 
-      const result = await response.json();
+      const result: any = await response.json();
 
-      if (result.text && result.text.trim()) {
+      if (typeof result?.text === 'string' && result.text.trim()) {
         return {
           text: result.text.trim(),
           isFinal: true,
-          confidence: result.confidence || undefined,
+          confidence: typeof result.confidence === 'number' ? result.confidence : undefined,
           language: this.language,
         };
       }

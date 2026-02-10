@@ -37,7 +37,7 @@ export async function createServer() {
   });
 
   // List recordings
-  server.get('/recordings', async (request, reply) => {
+  server.get('/recordings', async (_request, reply) => {
     try {
       const recordingsDir = join(process.cwd(), 'recordings');
       const files = readdirSync(recordingsDir)
