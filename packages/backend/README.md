@@ -6,7 +6,8 @@ Node.js backend for LiveScribe Chrome extension.
 
 ### General
 - `PORT` - Server port (default: 3001)
-- `STT_PROVIDER` - STT provider type: `whisper`, `vosk`, or `yandex` (default: `vosk`)
+- `STT_PROVIDER` - STT provider type: `deepgram` or `vosk` (default: `vosk`)
+- `DEEPGRAM_API_KEY` - Deepgram API key (required when `STT_PROVIDER=deepgram`)
 
 ### Yandex SpeechKit
 - `YANDEX_SPEECHKIT_API_KEY` - Yandex Cloud API key (or use `YANDEX_IAM_TOKEN`)
@@ -23,12 +24,11 @@ Node.js backend for LiveScribe Chrome extension.
 npm install
 ```
 
-2. Create `.env` file:
+2. Create `.env` file (Deepgram example):
 ```bash
 PORT=3001
-STT_PROVIDER=yandex
-YANDEX_SPEECHKIT_API_KEY=your_api_key_here
-YANDEX_FOLDER_ID=your_folder_id_here
+STT_PROVIDER=deepgram
+DEEPGRAM_API_KEY=your_deepgram_api_key_here
 ```
 
 3. Run development server:
@@ -36,24 +36,22 @@ YANDEX_FOLDER_ID=your_folder_id_here
 npm run dev
 ```
 
-## Getting Yandex SpeechKit Credentials
+## Getting Deepgram API Key
 
-1. Go to [Yandex Cloud Console](https://console.cloud.yandex.ru/)
-2. Create a folder or use existing one
-3. Get Folder ID from folder settings
-4. Create a service account or use your account
-5. Get API key or IAM token:
-   - **API Key**: Create in "Access keys" section
-   - **IAM Token**: Use `yc iam create-token` command or get from console
+1. Go to [Deepgram Console](https://console.deepgram.com/)
+2. Create or open your project
+3. Generate an API key
+4. Put it into backend `.env` as `DEEPGRAM_API_KEY`
 
 ## STT Providers
 
-### Yandex SpeechKit (Cloud)
-- ✅ No local models needed
-- ✅ High accuracy
-- ✅ Multiple languages
+### Deepgram (Cloud)
+- ✅ Streaming transcription with low latency
+- ✅ Diarization support (`DG Speaker N`)
+- ✅ Segmenting speech by speaker inside one result chunk
+- ✅ Backend mapping of diarized labels to DOM speaker history when possible
 - ❌ Requires internet
-- ❌ Paid service (free tier available)
+- ❌ Paid service (free tier/add-ons depend on account)
 
 ### Vosk (Local)
 - ✅ Works offline

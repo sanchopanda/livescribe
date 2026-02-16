@@ -43,12 +43,23 @@ Deepgram supports many languages. The implementation maps common language codes:
 - **Interim Results**: Partial transcripts while speaking
 - **Smart Formatting**: Automatic punctuation and formatting
 - **Model**: Uses `nova-2` model (latest and most accurate)
+- **Diarization**: Enabled (`diarize: true`) for per-speaker word labeling
+- **Speaker Segmentation**: Splits one Deepgram result into speaker-specific segments when speakers change inside a chunk
+- **DOM Name Mapping**: `DG Speaker N` labels are mapped to DOM speaker history (e.g. Pachca participant names) when available
 
 ## Audio Format
 
 - **Format**: PCM (Int16)
 - **Sample Rate**: 16kHz
 - **Channels**: Mono
+
+## Speaker Label Priority
+
+When backend sends transcript messages to the extension:
+
+1. If Deepgram diarization provides speaker labels and they can be mapped to DOM history, mapped DOM names are used.
+2. Otherwise current DOM speaker (`session.speaker`) is used as fallback.
+3. If neither source is available, `speaker` may be omitted.
 
 ## Free Tier
 

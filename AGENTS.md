@@ -74,7 +74,7 @@ Node.js WebSocket server using Fastify:
 - `src/server.ts` - Fastify server setup with CORS and WebSocket plugin
 - `src/websocket/handler.ts` - WebSocket message routing (start/audio/stop)
 - `src/websocket/session.ts` - Session management and audio chunk logging
-- `src/stt/` - STT provider interface and implementations (Whisper, Vosk HTTP)
+- `src/stt/` - STT provider interface and implementations (Deepgram, Vosk HTTP, Whisper placeholder)
 
 ### packages/stt-service
 Python microservice for Vosk speech recognition:
@@ -100,8 +100,12 @@ Endpoint: `ws://localhost:3001/ws`
 ## Current Status
 
 MVP phase: Audio capture + WebSocket streaming is implemented. STT integration:
-- **Yandex SpeechKit (Cloud)**: ✅ Implemented - requires API key/IAM token
+- **Deepgram (Cloud)**: ✅ Implemented (streaming, diarization, speaker segmentation)
 - **Vosk (Python)**: ✅ Implemented via HTTP microservice (`packages/stt-service/`)
 - **Whisper (Node.js)**: ⚠️ Placeholder (requires @xenova/transformers update)
 
-Set `STT_PROVIDER=yandex` or `STT_PROVIDER=vosk` in backend `.env` to choose provider.
+Notes on speaker labeling:
+- DOM speaker names (e.g. Pachca participant names) are still used as the primary user-visible names.
+- Deepgram diarization (`DG Speaker N`) is used for segmentation and is mapped to DOM speaker history when possible.
+
+Set `STT_PROVIDER=deepgram` or `STT_PROVIDER=vosk` in backend `.env` to choose provider.
