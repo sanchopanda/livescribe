@@ -34,18 +34,23 @@ export function registerWebSocketHandler(server: FastifyInstance) {
               
               // Create callback for real-time transcriptions (for streaming providers like Deepgram)
               const onResult = (result: any) => {
+                const session = sessionId ? sessionManager.getSession(sessionId) : undefined;
+                const resolvedSpeaker = result.speaker ?? session?.speaker ?? undefined;
+
                 const transcriptMessage: ServerMessage = result.isFinal
                   ? {
                       type: 'final',
                       text: result.text,
                       timestamp: Date.now(),
                       confidence: result.confidence ?? 0,
+                      speaker: resolvedSpeaker,
                     }
                   : {
                       type: 'partial',
                       text: result.text,
                       timestamp: Date.now(),
                       confidence: result.confidence,
+                      speaker: resolvedSpeaker,
                     };
                 connection.send(JSON.stringify(transcriptMessage));
                 server.log.debug(`Transcription (${result.isFinal ? 'final' : 'partial'}): ${result.text}`);
@@ -118,14 +123,14 @@ export function registerWebSocketHandler(server: FastifyInstance) {
                        text: sttResult.text,
                        timestamp: Date.now(),
                        confidence: sttResult.confidence ?? 0,
-                       speaker: session.speaker ?? undefined,
+                       speaker: sttResult.speaker ?? session.speaker ?? undefined,
                      }
                    : {
                        type: 'partial',
                        text: sttResult.text,
                        timestamp: Date.now(),
                        confidence: sttResult.confidence,
-                       speaker: session.speaker ?? undefined,
+                       speaker: sttResult.speaker ?? session.speaker ?? undefined,
                      };
 
                 connection.send(JSON.stringify(transcriptMessage));

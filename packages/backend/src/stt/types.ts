@@ -5,6 +5,7 @@ export interface STTResult {
   isFinal: boolean;
   confidence?: number;
   language?: string;
+  speaker?: string;
 }
 
 export type STTResultCallback = (result: STTResult) => void;
