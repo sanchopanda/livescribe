@@ -7,12 +7,53 @@ console.log('LiveScribe content script loaded');
 
 let isCapturing = false;
 let contentSessionId: string | null = null;
-let transcriptText = '';
-let partialText = '';
 let isMinimized = false;
 
 let currentSpeaker: string | null = null;
 let speakerIntervalId: number | null = null;
+
+interface TranscriptReplica {
+  speaker: string;
+  text: string;
+}
+
+let transcriptReplicas: TranscriptReplica[] = [];
+let partialReplica: TranscriptReplica | null = null;
+let lastFinalTimestamp: number | null = null;
+
+const REPLICA_MERGE_PAUSE_MS = 3000;
+
+function appendTranscriptReplica(speaker: string, text: string, eventTimestamp: number): void {
+  const trimmedText = text.trim();
+  if (!trimmedText) return;
+
+  const lastReplica = transcriptReplicas[transcriptReplicas.length - 1] || null;
+  const withinMergePause =
+    lastFinalTimestamp !== null &&
+    eventTimestamp - lastFinalTimestamp <= REPLICA_MERGE_PAUSE_MS;
+
+  if (lastReplica && lastReplica.speaker === speaker && withinMergePause) {
+    lastReplica.text = `${lastReplica.text} ${trimmedText}`.trim();
+  } else {
+    transcriptReplicas.push({ speaker, text: trimmedText });
+  }
+
+  lastFinalTimestamp = eventTimestamp;
+}
+
+function normalizeSpeaker(speaker?: string | null): string {
+  const value = speaker?.trim();
+  return value || 'Неизвестный спикер';
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 function getPlatformForStartMessage(): 'meet' | 'zoom' | 'teams' | 'pachca' | undefined {
   const host = window.location.hostname;
@@ -446,18 +487,24 @@ function updateTranscript() {
   
   if (!transcriptDiv || !transcriptTextDiv) return;
 
-  const fullText = transcriptText + (partialText ? ` <span style="color: #6b7280; font-style: italic;">${partialText}</span>` : '');
-  
-  if (fullText.trim()) {
+  const lines = transcriptReplicas.map((replica) => {
+    const speaker = escapeHtml(replica.speaker);
+    const text = escapeHtml(replica.text);
+    return `<div style="margin-bottom: 6px;"><span style="font-weight: 600;">${speaker}:</span> ${text}</div>`;
+  });
+
+  if (partialReplica && partialReplica.text.trim()) {
+    const speaker = escapeHtml(partialReplica.speaker);
+    const text = escapeHtml(partialReplica.text);
+    lines.push(`<div style="margin-bottom: 6px; color: #6b7280; font-style: italic;"><span style="font-weight: 600;">${speaker}:</span> ${text}</div>`);
+  }
+
+  if (lines.length > 0) {
     if (speakerDiv) {
-      if (currentSpeaker) {
-        speakerDiv.textContent = `Speaker: ${currentSpeaker}`;
-        speakerDiv.style.display = 'block';
-      } else {
-        speakerDiv.style.display = 'none';
-      }
+      speakerDiv.style.display = 'none';
     }
-    transcriptTextDiv.innerHTML = fullText;
+    transcriptTextDiv.innerHTML = lines.join('');
+    transcriptDiv.scrollTop = transcriptDiv.scrollHeight;
     transcriptDiv.style.display = 'block';
   } else {
     transcriptDiv.style.display = 'none';
@@ -585,8 +632,9 @@ async function handleStop() {
   });
 
   // Clear transcript when stopping
-  transcriptText = '';
-  partialText = '';
+  transcriptReplicas = [];
+  partialReplica = null;
+  lastFinalTimestamp = null;
   currentSpeaker = null;
   updateTranscript();
 
@@ -636,19 +684,38 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     console.log('Received transcript:', wsMessage);
 
     if (wsMessage.type === 'partial') {
-      partialText = wsMessage.text || '';
       if (typeof (wsMessage as any).speaker === 'string') {
         currentSpeaker = (wsMessage as any).speaker;
       }
+
+      const speaker = normalizeSpeaker((wsMessage as any).speaker ?? currentSpeaker);
+      const text = (wsMessage.text || '').trim();
+
+      // If speaker changed while we had an in-progress partial,
+      // commit previous partial as its own replica to preserve dialogue order.
+      if (partialReplica && partialReplica.speaker !== speaker && partialReplica.text.trim()) {
+        appendTranscriptReplica(partialReplica.speaker, partialReplica.text, Date.now());
+      }
+
+      partialReplica = text
+        ? { speaker, text }
+        : null;
+
       updateTranscript();
     } else if (wsMessage.type === 'final') {
-      if (wsMessage.text) {
-        transcriptText += (transcriptText ? ' ' : '') + wsMessage.text;
-      }
-      partialText = '';
       if (typeof (wsMessage as any).speaker === 'string') {
         currentSpeaker = (wsMessage as any).speaker;
       }
+
+      const text = (wsMessage.text || '').trim();
+      const speaker = normalizeSpeaker((wsMessage as any).speaker ?? currentSpeaker);
+      const eventTimestamp = typeof wsMessage.timestamp === 'number' ? wsMessage.timestamp : Date.now();
+
+      if (text) {
+        appendTranscriptReplica(speaker, text, eventTimestamp);
+      }
+
+      partialReplica = null;
       updateTranscript();
     } else if (wsMessage.type === 'status' && wsMessage.sessionId) {
       contentSessionId = wsMessage.sessionId;

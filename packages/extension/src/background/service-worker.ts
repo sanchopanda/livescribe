@@ -7,6 +7,7 @@ console.log('LiveScribe background service worker initialized');
 let currentStatus: 'idle' | 'connected' | 'recording' | 'error' = 'idle';
 let sessionId: string | null = null;
 let offscreenCreated = false;
+let recordingTabId: number | null = null;
 
 // Create offscreen document
 async function ensureOffscreen() {
@@ -160,7 +161,7 @@ function stopRecordingOffscreen(sendResponse: (response: any) => void) {
 }
 
 // Handle messages
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Status updates from offscreen document
   if (message.type === 'WS_STATUS') {
     console.log('WebSocket status:', message.status);
@@ -208,15 +209,24 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       currentStatus = wsMessage.status;
     }
 
-    // Forward transcript messages to content script
-    if (wsMessage.type === 'partial' || wsMessage.type === 'final') {
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        if (tabs[0]?.id) {
-          chrome.tabs.sendMessage(tabs[0].id, { type: 'WS_MESSAGE', message: wsMessage }).catch(() => {
-            // Content script might not be ready, that's ok
-          });
-        }
-      });
+    // Forward websocket messages to the tab where recording was started.
+    // Content script needs `status` to receive `sessionId` for speaker updates.
+    if (wsMessage.type === 'status' || wsMessage.type === 'partial' || wsMessage.type === 'final' || wsMessage.type === 'error') {
+      const forwardToTab = (tabId: number) => {
+        chrome.tabs.sendMessage(tabId, { type: 'WS_MESSAGE', message: wsMessage }).catch(() => {
+          // Content script might not be ready, that's ok
+        });
+      };
+
+      if (recordingTabId !== null) {
+        forwardToTab(recordingTabId);
+      } else {
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+          if (tabs[0]?.id) {
+            forwardToTab(tabs[0].id);
+          }
+        });
+      }
     }
     return false;
   }
@@ -245,9 +255,30 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message.type === 'START_RECORDING') {
-    // Check if already recording
+    if (sender.tab?.id) {
+      recordingTabId = sender.tab.id;
+    }
+
+    // Check if we are really recording or just have stale state.
     if (currentStatus === 'recording') {
-      sendResponse({ error: 'Recording already in progress' });
+      sendToOffscreen({ type: 'OFFSCREEN_GET_STATUS' })
+        .then((offscreenStatus) => {
+          if (offscreenStatus?.capturing) {
+            sendResponse({ error: 'Recording already in progress' });
+            return;
+          }
+
+          // Stale state: allow fresh start
+          currentStatus = 'idle';
+          sessionId = null;
+          startRecordingOffscreen(message, sendResponse);
+        })
+        .catch(() => {
+          // If status check fails, try to recover by attempting a fresh start
+          currentStatus = 'idle';
+          sessionId = null;
+          startRecordingOffscreen(message, sendResponse);
+        });
       return true;
     }
 
@@ -270,6 +301,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message.type === 'STOP_RECORDING') {
+    recordingTabId = null;
+
     // Stop recording via offscreen document
     stopRecordingOffscreen(sendResponse);
     return true;

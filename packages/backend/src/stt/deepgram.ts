@@ -120,14 +120,18 @@ export class DeepgramSTT implements STTProvider {
 
       const processResults = (data: any) => {
         try {
-          if (data.type !== 'Results') {
+          const payload = typeof data === 'string' ? JSON.parse(data) : data;
+
+          // Deepgram payload shape can differ by SDK/event.
+          // Accept canonical Results and payloads that already contain `channel`.
+          if (!payload || (payload.type && payload.type !== 'Results' && !payload.channel)) {
             return;
           }
 
-          const transcript = data.channel?.alternatives?.[0]?.transcript || '';
-          const isFinal = data.is_final === true;
-          const confidence = data.channel?.alternatives?.[0]?.confidence;
-          const words = data.channel?.alternatives?.[0]?.words || [];
+          const transcript = payload.channel?.alternatives?.[0]?.transcript || '';
+          const isFinal = payload.is_final === true;
+          const confidence = payload.channel?.alternatives?.[0]?.confidence;
+          const words = payload.channel?.alternatives?.[0]?.words || [];
 
           if (transcript && transcript.trim()) {
             const result: STTResult = {
@@ -159,9 +163,7 @@ export class DeepgramSTT implements STTProvider {
       connection.on('results', processResults);
       connection.on('transcript', processResults);
       connection.on('message', (data: any) => {
-        if (data.type === 'Results') {
-          processResults(data);
-        }
+        processResults(data);
       });
 
       connection.on('close', () => {
