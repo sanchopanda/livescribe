@@ -14,6 +14,59 @@ function getSTTProviderType(): 'vosk' | 'deepgram' {
 export function registerWebSocketHandler(server: FastifyInstance) {
   server.get('/ws', { websocket: true }, (connection, _req) => {
     let sessionId: string | null = null;
+    let lastDomSpeaker: string | null = null;
+    const domSpeakerHistory: Array<{ speaker: string; timestamp: number }> = [];
+    const dgSpeakerToDom = new Map<string, string>();
+
+    const isDeepgramSpeakerLabel = (speaker?: string): boolean => {
+      if (!speaker) return false;
+      return /^DG Speaker\s+\d+$/i.test(speaker.trim());
+    };
+
+    const rememberDomSpeaker = (speaker?: string | null, timestamp?: number) => {
+      const normalized = speaker?.trim();
+      if (!normalized) return;
+
+      if (normalized === lastDomSpeaker) {
+        return;
+      }
+
+      lastDomSpeaker = normalized;
+      domSpeakerHistory.push({ speaker: normalized, timestamp: typeof timestamp === 'number' ? timestamp : Date.now() });
+
+      // Keep only recent history window
+      const cutoff = Date.now() - 30_000;
+      while (domSpeakerHistory.length > 0 && domSpeakerHistory[0].timestamp < cutoff) {
+        domSpeakerHistory.shift();
+      }
+    };
+
+    const resolveDiarizedSpeakerToDom = (dgSpeaker?: string, fallbackSpeaker?: string | null): string | undefined => {
+      if (!dgSpeaker || !isDeepgramSpeakerLabel(dgSpeaker)) {
+        return fallbackSpeaker ?? undefined;
+      }
+
+      const mapped = dgSpeakerToDom.get(dgSpeaker);
+      if (mapped) {
+        return mapped;
+      }
+
+      // Ordered unique DOM speakers by recency of appearance in this session
+      const orderedDomSpeakers = domSpeakerHistory
+        .map((entry) => entry.speaker)
+        .filter((speaker, index, arr) => arr.indexOf(speaker) === index);
+
+      const alreadyAssigned = new Set(Array.from(dgSpeakerToDom.values()));
+      const firstUnassignedDom = orderedDomSpeakers.find((speaker) => !alreadyAssigned.has(speaker));
+      const selected = firstUnassignedDom ?? fallbackSpeaker ?? orderedDomSpeakers[orderedDomSpeakers.length - 1];
+
+      if (selected) {
+        dgSpeakerToDom.set(dgSpeaker, selected);
+        return selected;
+      }
+
+      return undefined;
+    };
 
     server.log.info('WebSocket client connected');
 
@@ -35,7 +88,9 @@ export function registerWebSocketHandler(server: FastifyInstance) {
               // Create callback for real-time transcriptions (for streaming providers like Deepgram)
               const onResult = (result: any) => {
                 const session = sessionId ? sessionManager.getSession(sessionId) : undefined;
-                const resolvedSpeaker = result.speaker ?? session?.speaker ?? undefined;
+                const resolvedSpeaker = isDeepgramSpeakerLabel(result.speaker)
+                  ? resolveDiarizedSpeakerToDom(result.speaker, session?.speaker)
+                  : result.speaker ?? session?.speaker ?? undefined;
 
                 const transcriptMessage: ServerMessage = result.isFinal
                   ? {
@@ -164,6 +219,7 @@ export function registerWebSocketHandler(server: FastifyInstance) {
             }
 
             session.speaker = message.speaker ?? null;
+            rememberDomSpeaker(message.speaker ?? null, (message as any).timestamp);
             break;
           }
 
