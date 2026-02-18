@@ -45,22 +45,22 @@ export class SessionManager {
   async destroySession(sessionId: string): Promise<boolean> {
     const session = this.sessions.get(sessionId);
     if (session) {
-      console.log(
-        `Session ${sessionId} stats:`,
-        `Chunks: ${session.audioChunksReceived},`,
-        `Total bytes: ${session.totalBytesReceived}`
-      );
+      // console.log(
+      //   `Session ${sessionId} stats:`,
+      //   `Chunks: ${session.audioChunksReceived},`,
+      //   `Total bytes: ${session.totalBytesReceived}`
+      // );
 
       // Finalize STT and get last transcription
       if (session.sttProvider) {
         try {
           const finalResult = await session.sttProvider.finalize();
           if (finalResult) {
-            console.log(`Final transcription: ${finalResult.text}`);
+            // console.log(`Final transcription: ${finalResult.text}`);
           }
           await session.sttProvider.destroy();
-        } catch (err) {
-          console.error(`Failed to finalize STT for session ${sessionId}:`, err);
+        } catch {
+          // console.error(`Failed to finalize STT for session ${sessionId}:`, err);
         }
       }
 
@@ -68,9 +68,9 @@ export class SessionManager {
       if (session.audioChunks.length > 0) {
         try {
           const wavFile = this.saveAudioToWav(sessionId, session.audioChunks);
-          console.log(`Audio saved to: ${wavFile}`);
-        } catch (err) {
-          console.error(`Failed to save audio for session ${sessionId}:`, err);
+          // console.log(`Audio saved to: ${wavFile}`);
+        } catch {
+          // console.error(`Failed to save audio for session ${sessionId}:`, err);
         }
       }
 
@@ -139,9 +139,9 @@ export class SessionManager {
 
       // Log every 10 chunks
       if (session.audioChunksReceived % 10 === 0) {
-        console.log(
-          `Session ${sessionId}: ${session.audioChunksReceived} chunks, ${session.totalBytesReceived} bytes total`
-        );
+        // console.log(
+        //   `Session ${sessionId}: ${session.audioChunksReceived} chunks, ${session.totalBytesReceived} bytes total`
+        // );
       }
     }
   }

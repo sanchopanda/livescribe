@@ -140,8 +140,8 @@ export class DeepgramSTT implements STTProvider {
       const langCode = this.getLanguageCode(language);
       const apiKey = this.getApiKey();
 
-      console.log(`Initializing Deepgram STT for language: ${langCode}`);
-      console.log(`Deepgram callback ${this.onResultCallback ? 'is set' : 'is NOT set'}`);
+      // console.log(`Initializing Deepgram STT for language: ${langCode}`);
+      // console.log(`Deepgram callback ${this.onResultCallback ? 'is set' : 'is NOT set'}`);
 
       this.deepgramClient = createClient(apiKey);
 
@@ -158,37 +158,37 @@ export class DeepgramSTT implements STTProvider {
         encoding: 'linear16',
       });
       
-      console.log('Deepgram connection created with config:', {
+      // console.log('Deepgram connection created with config:', {
         model: 'nova-2',
         language: langCode,
         diarize: true,
         sample_rate: 16000,
         channels: 1,
         encoding: 'linear16',
-      });
+      // });
 
       this.connection = connection;
 
       // Log connection object structure for debugging
-      console.log('Deepgram connection object keys:', Object.keys(connection));
-      console.log('Deepgram connection methods:', Object.getOwnPropertyNames(connection).filter(name => typeof (connection as any)[name] === 'function'));
+      // console.log('Deepgram connection object keys:', Object.keys(connection));
+      // console.log('Deepgram connection methods:', Object.getOwnPropertyNames(connection).filter(name => typeof (connection as any)[name] === 'function'));
 
       connection.on('open', () => {
-        console.log('Deepgram connection opened - ready to receive audio');
+        // console.log('Deepgram connection opened - ready to receive audio');
         this.connectionOpen = true;
       });
 
-      connection.on('error', (error: Error) => {
-        console.error('Deepgram connection error:', error);
-        console.error('Deepgram error details:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
+      connection.on('error', (_error: Error) => {
+        // console.error('Deepgram connection error:', error);
+        // console.error('Deepgram error details:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
       });
 
-      connection.on('warning', (warning: string) => {
-        console.warn('Deepgram warning:', warning);
+      connection.on('warning', (_warning: string) => {
+        // console.warn('Deepgram warning:', warning);
       });
 
-      connection.on('metadata', (metadata: any) => {
-        console.log('Deepgram metadata received:', JSON.stringify(metadata, null, 2));
+      connection.on('metadata', (_metadata: any) => {
+        // console.log('Deepgram metadata received:', JSON.stringify(metadata, null, 2));
       });
 
       const processResults = (data: any) => {
@@ -206,6 +206,10 @@ export class DeepgramSTT implements STTProvider {
           const isFinal = payload.is_final === true;
           const confidence = alternative?.confidence;
           const words: DeepgramWord[] = alternative?.words || [];
+
+          if (words.length > 0) {
+            console.log('Deepgram raw result:', JSON.stringify(payload));
+          }
 
           if (transcript && transcript.trim()) {
             const defaultResult: STTResult = {
@@ -234,9 +238,11 @@ export class DeepgramSTT implements STTProvider {
                     speaker: segment.speaker,
                   };
 
-                  console.log(
-                    `Deepgram ${isFinal ? 'final' : 'partial'} diarized: [${segmentResult.speaker || 'unknown'}] "${segmentResult.text}"`
-                  );
+                  if (words.length > 0) {
+                    console.log(
+                      `Deepgram ${isFinal ? 'final' : 'partial'} diarized: [${segmentResult.speaker || 'unknown'}] "${segmentResult.text}"`
+                    );
+                  }
                   this.onResultCallback(segmentResult);
                 }
               } else {
@@ -246,15 +252,17 @@ export class DeepgramSTT implements STTProvider {
                   speaker: segment?.speaker,
                 };
 
-                console.log(`Deepgram ${isFinal ? 'final' : 'partial'} transcript: "${result.text}" (confidence: ${result.confidence})`);
+                if (words.length > 0) {
+                  console.log(`Deepgram ${isFinal ? 'final' : 'partial'} transcript: "${result.text}" (confidence: ${result.confidence})`);
+                }
                 this.onResultCallback(result);
               }
             }
           } else if (words.length > 0) {
             console.log(`Deepgram received results with ${words.length} words but empty transcript (isFinal: ${isFinal})`);
           }
-        } catch (err) {
-          console.error('Error processing Deepgram results:', err);
+        } catch {
+          // console.error('Error processing Deepgram results:', err);
         }
       };
 
@@ -266,15 +274,15 @@ export class DeepgramSTT implements STTProvider {
       });
 
       connection.on('close', () => {
-        console.log('Deepgram connection closed');
-        console.log(`Total partial results: ${this.partialResults.length}, final results: ${this.finalResults.length}`);
+        // console.log('Deepgram connection closed');
+        // console.log(`Total partial results: ${this.partialResults.length}, final results: ${this.finalResults.length}`);
         this.connectionOpen = false;
       });
 
       this.initialized = true;
-      console.log('Deepgram STT initialized successfully');
+      // console.log('Deepgram STT initialized successfully');
     } catch (err) {
-      console.error('Failed to initialize Deepgram:', err);
+      // console.error('Failed to initialize Deepgram:', err);
       throw new Error(`Deepgram initialization failed: ${(err as Error).message}`);
     }
   }
@@ -285,7 +293,7 @@ export class DeepgramSTT implements STTProvider {
     }
 
     if (!this.connectionOpen) {
-      console.warn('Deepgram connection not yet open, buffering audio chunk');
+      // console.warn('Deepgram connection not yet open, buffering audio chunk');
       this.audioBuffer.push(audioBuffer);
       return null;
     }
@@ -293,15 +301,15 @@ export class DeepgramSTT implements STTProvider {
     try {
       if (format === 'pcm' || !format) {
         this.audioBuffer.push(audioBuffer);
-        console.log(`Deepgram: Sending PCM audio chunk: ${audioBuffer.length} bytes, connection open: ${this.connectionOpen}`);
+        // console.log(`Deepgram: Sending PCM audio chunk: ${audioBuffer.length} bytes, connection open: ${this.connectionOpen}`);
         
         // Send as Uint8Array (Deepgram SDK expects this format)
         const uint8Array = new Uint8Array(audioBuffer);
         this.connection.send(uint8Array);
       } else {
-        console.warn(`Deepgram: Unsupported format ${format}, expected PCM. Converting may be needed.`);
+        // console.warn(`Deepgram: Unsupported format ${format}, expected PCM. Converting may be needed.`);
         this.audioBuffer.push(audioBuffer);
-        console.log(`Deepgram: Sending audio chunk (${format}): ${audioBuffer.length} bytes`);
+        // console.log(`Deepgram: Sending audio chunk (${format}): ${audioBuffer.length} bytes`);
         const uint8Array = new Uint8Array(audioBuffer);
         this.connection.send(uint8Array);
       }
@@ -314,8 +322,8 @@ export class DeepgramSTT implements STTProvider {
       const latestFinal = this.finalResults[this.finalResults.length - 1] || null;
 
       return latestFinal || latestPartial;
-    } catch (err) {
-      console.error('Deepgram processing error:', err);
+    } catch {
+      // console.error('Deepgram processing error:', err);
       return null;
     }
   }
@@ -332,8 +340,8 @@ export class DeepgramSTT implements STTProvider {
       const latestPartial = this.partialResults[this.partialResults.length - 1] || null;
 
       return latestFinal || latestPartial;
-    } catch (err) {
-      console.error('Deepgram finalize error:', err);
+    } catch {
+      // console.error('Deepgram finalize error:', err);
       return null;
     }
   }
@@ -342,8 +350,8 @@ export class DeepgramSTT implements STTProvider {
     if (this.connection) {
       try {
         this.connection.finish();
-      } catch (err) {
-        console.error('Error closing Deepgram connection:', err);
+      } catch {
+        // console.error('Error closing Deepgram connection:', err);
       }
       this.connection = null;
     }
@@ -355,7 +363,7 @@ export class DeepgramSTT implements STTProvider {
     this.audioBuffer = [];
     this.connectionOpen = false;
     this.initialized = false;
-    console.log('Deepgram resources cleaned up');
+    // console.log('Deepgram resources cleaned up');
   }
 }
 

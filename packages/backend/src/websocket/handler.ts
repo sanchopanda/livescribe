@@ -76,7 +76,7 @@ export function registerWebSocketHandler(server: FastifyInstance) {
       return orderedWindowSpeakers[diarizeIndex] ?? fallbackSpeaker ?? orderedWindowSpeakers[orderedWindowSpeakers.length - 1];
     };
 
-    server.log.info('WebSocket client connected');
+    // server.log.info('WebSocket client connected');
 
     connection.on('message', async (data: Buffer) => {
       try {
@@ -90,7 +90,7 @@ export function registerWebSocketHandler(server: FastifyInstance) {
             let sttProvider: any = null;
             try {
               const providerType = getSTTProviderType();
-              server.log.info(`Using STT provider: ${providerType} (from env: ${process.env.STT_PROVIDER || 'not set'})`);
+              // server.log.info(`Using STT provider: ${providerType} (from env: ${process.env.STT_PROVIDER || 'not set'})`);
               sttProvider = createSTTProvider(providerType);
               
               // Create callback for real-time transcriptions (for streaming providers like Deepgram)
@@ -99,6 +99,10 @@ export function registerWebSocketHandler(server: FastifyInstance) {
                 const resolvedSpeaker = isDeepgramSpeakerLabel(result.speaker)
                   ? resolveDiarizedSpeakerToWindow(result.speaker, session?.speaker)
                   : result.speaker ?? session?.speaker ?? undefined;
+
+                if (result?.text?.trim() && result?.speaker) {
+                  console.log(`Имя из DOM: ${resolvedSpeaker ?? 'unknown'} | айди спикера из ответа: ${result.speaker}`);
+                }
 
                 const transcriptMessage: ServerMessage = result.isFinal
                   ? {
@@ -116,14 +120,14 @@ export function registerWebSocketHandler(server: FastifyInstance) {
                       speaker: resolvedSpeaker,
                     };
                 connection.send(JSON.stringify(transcriptMessage));
-                server.log.debug(`Transcription (${result.isFinal ? 'final' : 'partial'}): ${result.text}`);
+                // server.log.debug(`Transcription (${result.isFinal ? 'final' : 'partial'}): ${result.text}`);
               };
               
               await sttProvider.initialize(language, onResult);
-              server.log.info(`STT provider (${providerType}) initialized for language: ${language}`);
-            } catch (err) {
-              server.log.error(`STT provider initialization failed (audio will still be saved): ${(err as Error).message}`);
-              server.log.error(err, 'STT initialization error details');
+              // server.log.info(`STT provider (${providerType}) initialized for language: ${language}`);
+            } catch {
+              // server.log.error(`STT provider initialization failed (audio will still be saved): ${(err as Error).message}`);
+              // server.log.error(err, 'STT initialization error details');
               // Set sttProvider to null to ensure it's not used
               sttProvider = null;
               // Continue without STT - audio will still be saved to files
@@ -139,7 +143,7 @@ export function registerWebSocketHandler(server: FastifyInstance) {
 
             // Create session with STT provider
             sessionId = sessionManager.createSession(connection, sttProvider, language);
-            server.log.info(`Session started: ${sessionId} with language: ${language}`);
+            // server.log.info(`Session started: ${sessionId} with language: ${language}`);
 
             const response: ServerMessage = {
               type: 'status',
@@ -152,21 +156,21 @@ export function registerWebSocketHandler(server: FastifyInstance) {
 
           case 'audio': {
             if (!sessionId) {
-              server.log.warn('Received audio chunk without active session');
+              // server.log.warn('Received audio chunk without active session');
               return;
             }
 
             const session = sessionManager.getSession(sessionId);
             if (!session || !session.sttProvider) {
-              server.log.warn('Session or STT provider not found');
+              // server.log.warn('Session or STT provider not found');
               return;
             }
 
             // Decode base64 audio chunk
             const audioBuffer = Buffer.from(message.chunk, 'base64');
-            server.log.debug(
-              `Received audio chunk: ${audioBuffer.byteLength} bytes, session: ${sessionId}`
-            );
+            // server.log.debug(
+            //   `Received audio chunk: ${audioBuffer.byteLength} bytes, session: ${sessionId}`
+            // );
 
             // Store audio chunk for saving to file
             sessionManager.addAudioChunk(sessionId, audioBuffer);
@@ -197,15 +201,15 @@ export function registerWebSocketHandler(server: FastifyInstance) {
                      };
 
                 connection.send(JSON.stringify(transcriptMessage));
-                server.log.debug(`Transcription (${sttResult.isFinal ? 'final' : 'partial'}): ${sttResult.text}`);
+                // server.log.debug(`Transcription (${sttResult.isFinal ? 'final' : 'partial'}): ${sttResult.text}`);
               }
             } catch (err) {
                 // Log error but don't fail - STT might not be available
                 const errorMsg = (err as Error).message;
                 if (!errorMsg.includes('not supported') && !errorMsg.includes('compatibility')) {
-                  server.log.error(`STT processing error: ${errorMsg}`);
+                  // server.log.error(`STT processing error: ${errorMsg}`);
                 } else {
-                  server.log.warn(`STT not available: ${errorMsg}`);
+                  // server.log.warn(`STT not available: ${errorMsg}`);
                 }
                 // Don't fail the connection, audio will still be saved
               }
@@ -216,13 +220,13 @@ export function registerWebSocketHandler(server: FastifyInstance) {
 
           case 'speaker': {
             if (!sessionId) {
-              server.log.warn('Received speaker update without active session');
+              // server.log.warn('Received speaker update without active session');
               return;
             }
 
             const session = sessionManager.getSession(sessionId);
             if (!session) {
-              server.log.warn('Received speaker update for missing session');
+              // server.log.warn('Received speaker update for missing session');
               return;
             }
 
@@ -234,7 +238,7 @@ export function registerWebSocketHandler(server: FastifyInstance) {
           case 'stop': {
             if (sessionId) {
               await sessionManager.destroySession(sessionId);
-              server.log.info(`Session stopped: ${sessionId}`);
+              // server.log.info(`Session stopped: ${sessionId}`);
 
               const response: ServerMessage = {
                 type: 'status',
@@ -247,10 +251,10 @@ export function registerWebSocketHandler(server: FastifyInstance) {
           }
 
           default:
-            server.log.warn(`Unknown message type: ${(message as any).type}`);
+            // server.log.warn(`Unknown message type: ${(message as any).type}`);
         }
-      } catch (err) {
-        server.log.error(`Error processing WebSocket message: ${(err as Error).message}`);
+      } catch {
+        // server.log.error(`Error processing WebSocket message: ${(err as Error).message}`);
 
         const errorResponse: ServerMessage = {
           type: 'error',
@@ -264,14 +268,14 @@ export function registerWebSocketHandler(server: FastifyInstance) {
     connection.on('close', async () => {
       if (sessionId) {
         await sessionManager.destroySession(sessionId);
-        server.log.info(`WebSocket closed, session destroyed: ${sessionId}`);
+        // server.log.info(`WebSocket closed, session destroyed: ${sessionId}`);
       } else {
-        server.log.info('WebSocket closed');
+        // server.log.info('WebSocket closed');
       }
     });
 
     connection.on('error', async (err) => {
-      server.log.error(`WebSocket error: ${(err as Error).message}`);
+      // server.log.error(`WebSocket error: ${(err as Error).message}`);
       if (sessionId) {
         await sessionManager.destroySession(sessionId);
       }

@@ -15,9 +15,9 @@ async function start() {
       host: '0.0.0.0',
     });
 
-    server.log.info(`WebSocket server running on ws://localhost:${PORT}`);
-  } catch (err) {
-    console.error('Failed to start server:', err);
+    // server.log.info(`WebSocket server running on ws://localhost:${PORT}`);
+  } catch {
+    // console.error('Failed to start server:', err);
     process.exit(1);
   }
 }

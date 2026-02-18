@@ -26,9 +26,9 @@ export class VoskHTTPSTT implements STTProvider {
       }
 
       this.initialized = true;
-      console.log(`Vosk STT initialized for language: ${language}`);
+      // console.log(`Vosk STT initialized for language: ${language}`);
     } catch (err) {
-      console.error('Failed to initialize Vosk STT service:', err);
+      // console.error('Failed to initialize Vosk STT service:', err);
       throw new Error(`Vosk STT initialization failed: ${(err as Error).message}`);
     }
   }
@@ -55,7 +55,7 @@ export class VoskHTTPSTT implements STTProvider {
 
       if (!response.ok) {
         const errorBody: any = await response.json().catch(() => null);
-        console.error('STT processing error:', errorBody);
+        // console.error('STT processing error:', errorBody);
         return null;
       }
 
@@ -71,8 +71,8 @@ export class VoskHTTPSTT implements STTProvider {
       }
 
       return null;
-    } catch (err) {
-      console.error('Vosk HTTP request error:', err);
+    } catch {
+      // console.error('Vosk HTTP request error:', err);
       return null;
     }
   }
@@ -105,8 +105,8 @@ export class VoskHTTPSTT implements STTProvider {
       }
 
       return null;
-    } catch (err) {
-      console.error('Vosk finalize error:', err);
+    } catch {
+      // console.error('Vosk finalize error:', err);
       return null;
     }
   }
@@ -119,12 +119,12 @@ export class VoskHTTPSTT implements STTProvider {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ language: this.language }),
       });
-    } catch (err) {
+    } catch {
       // Ignore errors on cleanup
     }
 
     this.initialized = false;
-    console.log('Vosk HTTP STT resources cleaned up');
+    // console.log('Vosk HTTP STT resources cleaned up');
   }
 }
 
