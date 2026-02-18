@@ -15,8 +15,12 @@ export function registerWebSocketHandler(server: FastifyInstance) {
   server.get('/ws', { websocket: true }, (connection, _req) => {
     let sessionId: string | null = null;
     let lastDomSpeaker: string | null = null;
-    const domSpeakerHistory: Array<{ speaker: string; timestamp: number }> = [];
-    const dgSpeakerToDom = new Map<string, string>();
+    const speakerEvents: Array<{ speaker: string; timestamp: number }> = [];
+    const activeDiarizeLabels: string[] = [];
+    let lastResultAt = 0;
+
+    const RESULT_GROUP_GAP_MS = 1200;
+    const SPEAKER_WINDOW_MS = 8000;
 
     const isDeepgramSpeakerLabel = (speaker?: string): boolean => {
       if (!speaker) return false;
@@ -32,40 +36,44 @@ export function registerWebSocketHandler(server: FastifyInstance) {
       }
 
       lastDomSpeaker = normalized;
-      domSpeakerHistory.push({ speaker: normalized, timestamp: typeof timestamp === 'number' ? timestamp : Date.now() });
+      speakerEvents.push({ speaker: normalized, timestamp: typeof timestamp === 'number' ? timestamp : Date.now() });
 
       // Keep only recent history window
       const cutoff = Date.now() - 30_000;
-      while (domSpeakerHistory.length > 0 && domSpeakerHistory[0].timestamp < cutoff) {
-        domSpeakerHistory.shift();
+      while (speakerEvents.length > 0 && speakerEvents[0].timestamp < cutoff) {
+        speakerEvents.shift();
       }
     };
 
-    const resolveDiarizedSpeakerToDom = (dgSpeaker?: string, fallbackSpeaker?: string | null): string | undefined => {
+    const getOrderedSpeakersFromWindow = (nowTs: number): string[] => {
+      const fromTs = nowTs - SPEAKER_WINDOW_MS;
+      return speakerEvents
+        .filter((event) => event.timestamp >= fromTs)
+        .map((event) => event.speaker)
+        .filter((speaker, index, arr) => arr.indexOf(speaker) === index);
+    };
+
+    const resolveDiarizedSpeakerToWindow = (dgSpeaker?: string, fallbackSpeaker?: string | null): string | undefined => {
       if (!dgSpeaker || !isDeepgramSpeakerLabel(dgSpeaker)) {
         return fallbackSpeaker ?? undefined;
       }
 
-      const mapped = dgSpeakerToDom.get(dgSpeaker);
-      if (mapped) {
-        return mapped;
+      const nowTs = Date.now();
+
+      // New result group: reset local label ordering.
+      if (lastResultAt === 0 || nowTs - lastResultAt > RESULT_GROUP_GAP_MS) {
+        activeDiarizeLabels.length = 0;
+      }
+      lastResultAt = nowTs;
+
+      if (!activeDiarizeLabels.includes(dgSpeaker)) {
+        activeDiarizeLabels.push(dgSpeaker);
       }
 
-      // Ordered unique DOM speakers by recency of appearance in this session
-      const orderedDomSpeakers = domSpeakerHistory
-        .map((entry) => entry.speaker)
-        .filter((speaker, index, arr) => arr.indexOf(speaker) === index);
+      const diarizeIndex = activeDiarizeLabels.indexOf(dgSpeaker);
+      const orderedWindowSpeakers = getOrderedSpeakersFromWindow(nowTs);
 
-      const alreadyAssigned = new Set(Array.from(dgSpeakerToDom.values()));
-      const firstUnassignedDom = orderedDomSpeakers.find((speaker) => !alreadyAssigned.has(speaker));
-      const selected = firstUnassignedDom ?? fallbackSpeaker ?? orderedDomSpeakers[orderedDomSpeakers.length - 1];
-
-      if (selected) {
-        dgSpeakerToDom.set(dgSpeaker, selected);
-        return selected;
-      }
-
-      return undefined;
+      return orderedWindowSpeakers[diarizeIndex] ?? fallbackSpeaker ?? orderedWindowSpeakers[orderedWindowSpeakers.length - 1];
     };
 
     server.log.info('WebSocket client connected');
@@ -89,7 +97,7 @@ export function registerWebSocketHandler(server: FastifyInstance) {
               const onResult = (result: any) => {
                 const session = sessionId ? sessionManager.getSession(sessionId) : undefined;
                 const resolvedSpeaker = isDeepgramSpeakerLabel(result.speaker)
-                  ? resolveDiarizedSpeakerToDom(result.speaker, session?.speaker)
+                  ? resolveDiarizedSpeakerToWindow(result.speaker, session?.speaker)
                   : result.speaker ?? session?.speaker ?? undefined;
 
                 const transcriptMessage: ServerMessage = result.isFinal
