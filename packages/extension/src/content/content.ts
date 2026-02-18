@@ -2,6 +2,7 @@
 // Audio capture is handled by service worker + offscreen document
 
 import { getPachcaActiveSpeaker } from './pachca-speaker-detector';
+import { getTeamsActiveSpeaker } from './teams-speaker-detector';
 
 console.log('LiveScribe content script loaded');
 
@@ -70,9 +71,18 @@ function startSpeakerTracking(): void {
   // Polling is simplest and works even when DOM updates are subtle.
   speakerIntervalId = window.setInterval(() => {
     if (!isCapturing || !contentSessionId) return;
-    if (!window.location.hostname.includes('pachca.com')) return;
 
-    const info = getPachcaActiveSpeaker();
+    const host = window.location.hostname;
+    let info: { participantId: string; speaker: string | null } | null = null;
+
+    if (host.includes('pachca.com')) {
+      info = getPachcaActiveSpeaker();
+    } else if (host.includes('teams.microsoft.com') || host.includes('teams.live.com')) {
+      info = getTeamsActiveSpeaker();
+    } else {
+      return;
+    }
+
     const nextSpeaker = info?.speaker ?? null;
 
     if (nextSpeaker === currentSpeaker) return;

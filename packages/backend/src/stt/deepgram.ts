@@ -152,19 +152,19 @@ export class DeepgramSTT implements STTProvider {
         punctuate: true,
         interim_results: true,
         endpointing: 300,
-        diarize: true,
+        diarize: false,
         sample_rate: 16000,
         channels: 1,
         encoding: 'linear16',
       });
       
       // console.log('Deepgram connection created with config:', {
-        model: 'nova-2',
-        language: langCode,
-        diarize: true,
-        sample_rate: 16000,
-        channels: 1,
-        encoding: 'linear16',
+      //   model: 'nova-2',
+      //   language: langCode,
+      //   diarize: true,
+      //   sample_rate: 16000,
+      //   channels: 1,
+      //   encoding: 'linear16',
       // });
 
       this.connection = connection;
