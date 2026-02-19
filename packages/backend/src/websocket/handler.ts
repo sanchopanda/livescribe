@@ -14,67 +14,6 @@ function getSTTProviderType(): 'vosk' | 'deepgram' {
 export function registerWebSocketHandler(server: FastifyInstance) {
   server.get('/ws', { websocket: true }, (connection, _req) => {
     let sessionId: string | null = null;
-    let lastDomSpeaker: string | null = null;
-    const speakerEvents: Array<{ speaker: string; timestamp: number }> = [];
-    const activeDiarizeLabels: string[] = [];
-    let lastResultAt = 0;
-
-    const RESULT_GROUP_GAP_MS = 1200;
-    const SPEAKER_WINDOW_MS = 8000;
-
-    const isDeepgramSpeakerLabel = (speaker?: string): boolean => {
-      if (!speaker) return false;
-      return /^DG Speaker\s+\d+$/i.test(speaker.trim());
-    };
-
-    const rememberDomSpeaker = (speaker?: string | null, timestamp?: number) => {
-      const normalized = speaker?.trim();
-      if (!normalized) return;
-
-      if (normalized === lastDomSpeaker) {
-        return;
-      }
-
-      lastDomSpeaker = normalized;
-      speakerEvents.push({ speaker: normalized, timestamp: typeof timestamp === 'number' ? timestamp : Date.now() });
-
-      // Keep only recent history window
-      const cutoff = Date.now() - 30_000;
-      while (speakerEvents.length > 0 && speakerEvents[0].timestamp < cutoff) {
-        speakerEvents.shift();
-      }
-    };
-
-    const getOrderedSpeakersFromWindow = (nowTs: number): string[] => {
-      const fromTs = nowTs - SPEAKER_WINDOW_MS;
-      return speakerEvents
-        .filter((event) => event.timestamp >= fromTs)
-        .map((event) => event.speaker)
-        .filter((speaker, index, arr) => arr.indexOf(speaker) === index);
-    };
-
-    const resolveDiarizedSpeakerToWindow = (dgSpeaker?: string, fallbackSpeaker?: string | null): string | undefined => {
-      if (!dgSpeaker || !isDeepgramSpeakerLabel(dgSpeaker)) {
-        return fallbackSpeaker ?? undefined;
-      }
-
-      const nowTs = Date.now();
-
-      // New result group: reset local label ordering.
-      if (lastResultAt === 0 || nowTs - lastResultAt > RESULT_GROUP_GAP_MS) {
-        activeDiarizeLabels.length = 0;
-      }
-      lastResultAt = nowTs;
-
-      if (!activeDiarizeLabels.includes(dgSpeaker)) {
-        activeDiarizeLabels.push(dgSpeaker);
-      }
-
-      const diarizeIndex = activeDiarizeLabels.indexOf(dgSpeaker);
-      const orderedWindowSpeakers = getOrderedSpeakersFromWindow(nowTs);
-
-      return orderedWindowSpeakers[diarizeIndex] ?? fallbackSpeaker ?? orderedWindowSpeakers[orderedWindowSpeakers.length - 1];
-    };
 
     // server.log.info('WebSocket client connected');
 
@@ -96,13 +35,7 @@ export function registerWebSocketHandler(server: FastifyInstance) {
               // Create callback for real-time transcriptions (for streaming providers like Deepgram)
               const onResult = (result: any) => {
                 const session = sessionId ? sessionManager.getSession(sessionId) : undefined;
-                const resolvedSpeaker = isDeepgramSpeakerLabel(result.speaker)
-                  ? resolveDiarizedSpeakerToWindow(result.speaker, session?.speaker)
-                  : result.speaker ?? session?.speaker ?? undefined;
-
-                if (result?.text?.trim() && result?.speaker) {
-                  console.log(`Имя из DOM: ${resolvedSpeaker ?? 'unknown'} | айди спикера из ответа: ${result.speaker}`);
-                }
+                const resolvedSpeaker = session?.speaker ?? undefined;
 
                 const transcriptMessage: ServerMessage = result.isFinal
                   ? {
@@ -135,7 +68,7 @@ export function registerWebSocketHandler(server: FastifyInstance) {
               const warningResponse: ServerMessage = {
                 type: 'error',
                 code: 'STT_UNAVAILABLE',
-                message: `STT not available: ${(err as Error).message}. Audio will be saved but not transcribed.`,
+                message: 'STT not available. Audio will be saved but not transcribed.',
               };
               connection.send(JSON.stringify(warningResponse));
               // Continue anyway - create session without STT provider
@@ -231,7 +164,6 @@ export function registerWebSocketHandler(server: FastifyInstance) {
             }
 
             session.speaker = message.speaker ?? null;
-            rememberDomSpeaker(message.speaker ?? null, (message as any).timestamp);
             break;
           }
 

@@ -4,18 +4,6 @@
 import type { STTProvider, STTResult, STTResultCallback } from './types.js';
 import { createClient } from '@deepgram/sdk';
 
-interface DeepgramWord {
-  word?: string;
-  confidence?: number;
-  speaker?: number;
-}
-
-interface DeepgramSpeakerSegment {
-  speaker?: string;
-  text: string;
-  confidence?: number;
-}
-
 export class DeepgramSTT implements STTProvider {
   private language: string = 'ru';
   private initialized = false;
@@ -27,65 +15,6 @@ export class DeepgramSTT implements STTProvider {
   private finalResults: STTResult[] = [];
   private audioBuffer: Buffer[] = [];
   private connectionOpen: boolean = false;
-
-  private formatSpeakerLabel(speakerId: number): string {
-    return `DG Speaker ${speakerId + 1}`;
-  }
-
-  private splitBySpeaker(words: DeepgramWord[]): DeepgramSpeakerSegment[] {
-    if (!Array.isArray(words) || words.length === 0) {
-      return [];
-    }
-
-    const segments: DeepgramSpeakerSegment[] = [];
-    let currentSpeakerId: number | undefined;
-    let currentWords: string[] = [];
-    let confidenceSum = 0;
-    let confidenceCount = 0;
-
-    const flush = () => {
-      if (currentWords.length === 0) {
-        return;
-      }
-
-      const text = currentWords.join(' ').trim();
-      if (!text) {
-        return;
-      }
-
-      segments.push({
-        speaker: typeof currentSpeakerId === 'number' ? this.formatSpeakerLabel(currentSpeakerId) : undefined,
-        text,
-        confidence: confidenceCount > 0 ? confidenceSum / confidenceCount : undefined,
-      });
-    };
-
-    for (const word of words) {
-      const token = (word.word || '').trim();
-      if (!token) {
-        continue;
-      }
-
-      const wordSpeaker = typeof word.speaker === 'number' ? word.speaker : undefined;
-      if (currentWords.length > 0 && wordSpeaker !== currentSpeakerId) {
-        flush();
-        currentWords = [];
-        confidenceSum = 0;
-        confidenceCount = 0;
-      }
-
-      currentSpeakerId = wordSpeaker;
-      currentWords.push(token);
-
-      if (typeof word.confidence === 'number') {
-        confidenceSum += word.confidence;
-        confidenceCount += 1;
-      }
-    }
-
-    flush();
-    return segments;
-  }
 
   private getApiKey(): string {
     const apiKey = process.env.DEEPGRAM_API_KEY;
@@ -205,11 +134,7 @@ export class DeepgramSTT implements STTProvider {
           const transcript = alternative?.transcript || '';
           const isFinal = payload.is_final === true;
           const confidence = alternative?.confidence;
-          const words: DeepgramWord[] = alternative?.words || [];
-
-          if (words.length > 0) {
-            console.log('Deepgram raw result:', JSON.stringify(payload));
-          }
+          const words = alternative?.words || [];
 
           if (transcript && transcript.trim()) {
             const defaultResult: STTResult = {
@@ -219,8 +144,6 @@ export class DeepgramSTT implements STTProvider {
               language: langCode,
             };
 
-            const speakerSegments = this.splitBySpeaker(words);
-
             if (isFinal) {
               this.finalResults.push(defaultResult);
             } else {
@@ -228,38 +151,8 @@ export class DeepgramSTT implements STTProvider {
             }
 
             if (this.onResultCallback) {
-              if (speakerSegments.length > 1) {
-                for (const segment of speakerSegments) {
-                  const segmentResult: STTResult = {
-                    text: segment.text,
-                    isFinal,
-                    confidence: segment.confidence ?? confidence,
-                    language: langCode,
-                    speaker: segment.speaker,
-                  };
-
-                  if (words.length > 0) {
-                    console.log(
-                      `Deepgram ${isFinal ? 'final' : 'partial'} diarized: [${segmentResult.speaker || 'unknown'}] "${segmentResult.text}"`
-                    );
-                  }
-                  this.onResultCallback(segmentResult);
-                }
-              } else {
-                const segment = speakerSegments[0];
-                const result: STTResult = {
-                  ...defaultResult,
-                  speaker: segment?.speaker,
-                };
-
-                if (words.length > 0) {
-                  console.log(`Deepgram ${isFinal ? 'final' : 'partial'} transcript: "${result.text}" (confidence: ${result.confidence})`);
-                }
-                this.onResultCallback(result);
-              }
+              this.onResultCallback(defaultResult);
             }
-          } else if (words.length > 0) {
-            console.log(`Deepgram received results with ${words.length} words but empty transcript (isFinal: ${isFinal})`);
           }
         } catch {
           // console.error('Error processing Deepgram results:', err);

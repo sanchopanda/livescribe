@@ -47,9 +47,7 @@ npm run dev
 
 ### Deepgram (Cloud)
 - ✅ Streaming transcription with low latency
-- ✅ Diarization support (`DG Speaker N`)
-- ✅ Segmenting speech by speaker inside one result chunk
-- ✅ Backend mapping of diarized labels to DOM speaker history when possible
+- ⚠️ Diarization/multi-speaker segmentation is currently disabled in runtime (archived for future)
 - ❌ Requires internet
 - ❌ Paid service (free tier/add-ons depend on account)
 

@@ -100,12 +100,13 @@ Endpoint: `ws://localhost:3001/ws`
 ## Current Status
 
 MVP phase: Audio capture + WebSocket streaming is implemented. STT integration:
-- **Deepgram (Cloud)**: ✅ Implemented (streaming, diarization, speaker segmentation)
+- **Deepgram (Cloud)**: ✅ Implemented (streaming)
 - **Vosk (Python)**: ✅ Implemented via HTTP microservice (`packages/stt-service/`)
 - **Whisper (Node.js)**: ⚠️ Placeholder (requires @xenova/transformers update)
 
 Notes on speaker labeling:
 - DOM speaker names (e.g. Pachca participant names) are still used as the primary user-visible names.
-- Deepgram diarization (`DG Speaker N`) is used for segmentation and is mapped to DOM speaker history when possible.
+- Runtime speaker assignment is currently DOM-only.
+- Experimental WebRTC and Deepgram diarization logic is archived in `docs/SPEAKER_DETECTION_ARCHIVE.md` for future restoration.
 
 Set `STT_PROVIDER=deepgram` or `STT_PROVIDER=vosk` in backend `.env` to choose provider.
