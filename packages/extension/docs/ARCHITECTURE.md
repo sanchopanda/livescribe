@@ -21,6 +21,20 @@ LiveScribe - это Chrome расширение, которое:
 
 **Важно:** Пользователь **слышит звук** во время записи! Расширение только "подслушивает" аудио, не перехватывая его.
 
+### Обновление: platform-first архитектура
+
+Сейчас extension разделён на общий runtime и платформо-специфичные модули:
+
+- `src/content/platforms/*` — логика конкретных платформ (Pachca, Teams и т.д.)
+- `src/content/platform/platform-adapter.ts` — единая точка доступа для UI/runtime
+- `src/platform/audio-mode-capabilities.ts` — capability-конфиг платформ
+
+Режимы аудио:
+- **mixed** — захват общего аудио вкладки (`chrome.tabCapture`)
+- **per-track** — захват отдельных WebRTC аудиотреков участников (реализован для Pachca)
+
+Показ переключателя режима в UI и runtime-решения теперь capability-driven.
+
 ---
 
 ## Компоненты расширения
@@ -81,19 +95,23 @@ LiveScribe - это Chrome расширение, которое:
 
 ```
 4. Service Worker создаёт Offscreen Document (если его нет)
-5. Service Worker вызывает chrome.tabCapture.getMediaStreamId()
-   → Получает ID потока аудио из текущей вкладки
-6. Service Worker отправляет streamId в Offscreen Document
+5. Определяет platform/audioMode и capabilities
+6. Если режим mixed:
+   - вызывает chrome.tabCapture.getMediaStreamId()
+   - отправляет streamId в Offscreen Document
+7. Если режим per-track (и поддержан платформой):
+   - не запускает tabCapture
+   - ждёт поканальные чанки из content per-track pipeline
 ```
 
 **Что происходит в браузере:**
 - В вкладке появляется 🔵 синий квадрат с текстом "Tab's content is being shared"
 - Это нормально! Это индикатор chrome.tabCapture
 
-### Шаг 3: Offscreen обрабатывает аудио
+### Шаг 3: Обработка аудио (mixed/per-track)
 
 ```
-7. Offscreen Document получает streamId
+7. В mixed режиме Offscreen получает streamId
 8. Создаёт MediaStream из streamId
 9. Создаёт два пути для аудио:
 
@@ -103,8 +121,13 @@ LiveScribe - это Chrome расширение, которое:
 [Audio Element]                      [AudioWorklet]
    │                                            │
    ↓                                            ↓
-Воспроизведение                           Обработка
-(пользователь слышит)              (конвертация в PCM)
+   Воспроизведение                           Обработка
+ (пользователь слышит)              (конвертация в PCM)
+
+10. В per-track режиме (Pachca) используется отдельный пайплайн:
+    - MAIN-world hook регистрирует remote WebRTC audio tracks
+    - per-track transcriber захватывает каждый трек через AudioWorklet
+    - чанки отправляются participant-aware (`participantId`, `speaker`)
 ```
 
 **Подробнее:**

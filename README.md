@@ -1,6 +1,6 @@
 # LiveScribe
 
-Real-time transcription for video calls (Google Meet, Zoom, MS Teams).
+Real-time transcription for video calls (Google Meet, Zoom, MS Teams, Pachca).
 
 ## Architecture
 
@@ -8,6 +8,16 @@ Monorepo structure with pnpm workspaces:
 - `packages/extension` - Chrome Extension (React + TypeScript)
 - `packages/backend` - WebSocket server (Node.js + Fastify)
 - `packages/shared` - Shared TypeScript types
+
+### Platform-aware audio modes
+
+- `mixed` mode: capture full tab audio via `chrome.tabCapture`.
+- `per-track` mode: capture separate participant WebRTC tracks (currently Pachca).
+
+Mode availability is capability-driven per platform in
+`packages/extension/src/platform/audio-mode-capabilities.ts`.
+
+`start` WebSocket payload now includes optional `platform` and `audioMode`.
 
 ## Prerequisites
 
@@ -53,13 +63,14 @@ npm run build:extension
 
 ## Project Status
 
-Current phase: **MVP - Audio Capture + WebSocket**
+Current phase: **MVP+ - Platform-aware capture + WebSocket**
 
 - ✅ Monorepo structure
 - 🔄 WebSocket communication
 - 🔄 Audio capture (chrome.tabCapture)
-- ⏳ STT integration (planned)
-- ⏳ Platform support (Meet/Zoom/Teams)
+- ✅ STT integration (Deepgram + Vosk)
+- ✅ Pachca per-track capture mode
+- 🔄 Capability-based platform scaling (Meet/Zoom/Teams mixed mode)
 
 ## License
 

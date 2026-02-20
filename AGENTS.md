@@ -4,7 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LiveScribe is a Chrome extension for real-time transcription of video calls (Google Meet, Zoom, MS Teams). It captures tab audio via Chrome's tabCapture API, streams it over WebSocket to a backend, and displays transcriptions in real-time.
+LiveScribe is a Chrome extension for real-time transcription of video calls (Google Meet, Zoom, MS Teams, Pachca). It supports platform-aware audio pipelines:
+- **mixed** mode: classic tab audio capture via `chrome.tabCapture`
+- **per-track** mode: per-participant WebRTC track capture (currently implemented for Pachca)
+
+Audio is streamed over WebSocket to backend STT providers and rendered in-page in real time.
 
 ## Commands
 
@@ -63,8 +67,13 @@ Chrome Extension (Manifest V3) built with Vite + React + TypeScript:
 - `src/popup/` - React popup UI
 - `src/audio/encoder.ts` - Float32 → Int16 PCM conversion utilities
 - `src/websocket/client.ts` - WebSocket client with auto-reconnect
+- `src/content/platforms/` - platform-specific logic (Pachca/Teams, etc.)
+- `src/content/platform/` - platform adapter + detection
+- `src/platform/audio-mode-capabilities.ts` - centralized platform capabilities (per-track/mixed, speaker detection, WebRTC hook support)
 
-Audio capture flow: chrome.tabCapture → AudioContext → AudioWorklet → PCM Int16 → base64 → WebSocket
+Audio capture flow depends on platform/mode:
+- **mixed**: `chrome.tabCapture` → AudioContext → AudioWorklet → PCM Int16 → base64 → WebSocket
+- **per-track (Pachca)**: MAIN-world WebRTC hook → track registry → per-track AudioWorklet capture → PCM Int16 → base64 → WebSocket
 
 **Content Scripts:** Currently limited to specific domains (Google Meet, Zoom, Teams, YouTube).
 TODO: Update `public/manifest.json` matches list when adding support for new video platforms.
@@ -87,7 +96,7 @@ Python microservice for Vosk speech recognition:
 Endpoint: `ws://localhost:3001/ws`
 
 **Client → Server:**
-- `{ type: "start", language: "ru-RU" | "en-US" }` - Start session
+- `{ type: "start", language: "ru-RU" | "en-US", platform?, audioMode? }` - Start session
 - `{ type: "audio", sessionId, sampleRate: 16000, channels: 1, chunk: "<base64>" }` - Audio chunk
 - `{ type: "stop", sessionId }` - Stop session
 
@@ -99,7 +108,7 @@ Endpoint: `ws://localhost:3001/ws`
 
 ## Current Status
 
-MVP phase: Audio capture + WebSocket streaming is implemented. STT integration:
+MVP+: Audio capture + WebSocket streaming is implemented, including platform-aware audio mode selection. STT integration:
 - **Deepgram (Cloud)**: ✅ Implemented (streaming)
 - **Vosk (Python)**: ✅ Implemented via HTTP microservice (`packages/stt-service/`)
 - **Whisper (Node.js)**: ⚠️ Placeholder (requires @xenova/transformers update)
@@ -108,5 +117,9 @@ Notes on speaker labeling:
 - DOM speaker names (e.g. Pachca participant names) are still used as the primary user-visible names.
 - Runtime speaker assignment is currently DOM-only.
 - Experimental WebRTC and Deepgram diarization logic is archived in `docs/SPEAKER_DETECTION_ARCHIVE.md` for future restoration.
+
+Platform audio modes:
+- **Pachca**: `mixed` + `per-track` (switchable in widget)
+- **Teams/Meet/Zoom**: `mixed` only for now (capability-gated in UI/runtime)
 
 Set `STT_PROVIDER=deepgram` or `STT_PROVIDER=vosk` in backend `.env` to choose provider.
