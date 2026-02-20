@@ -1,10 +1,11 @@
 // Content script for LiveScribe widget UI
 // Audio capture is handled by service worker + offscreen document
 
-import { getPachcaActiveSpeaker } from './pachca-speaker-detector';
-import { getTeamsActiveSpeaker } from './teams-speaker-detector';
+import { createPlatformAdapter } from './platform/platform-adapter';
+import { RecordingController } from './recording/recording-controller';
 
 console.log('LiveScribe content script loaded');
+console.log('[LiveScribe] content build marker: 2026-02-20-track-transcriber-diagnostics');
 
 let isCapturing = false;
 let contentSessionId: string | null = null;
@@ -12,6 +13,12 @@ let isMinimized = false;
 
 let currentSpeaker: string | null = null;
 let speakerIntervalId: number | null = null;
+const platformAdapter = createPlatformAdapter({
+  getIsCapturing: () => isCapturing,
+  getSessionId: () => contentSessionId,
+});
+const trackModeController = platformAdapter.getTrackModeController();
+let recordingController: RecordingController | null = null;
 
 interface TranscriptReplica {
   speaker: string;
@@ -23,6 +30,14 @@ let partialReplica: TranscriptReplica | null = null;
 let lastFinalTimestamp: number | null = null;
 
 const REPLICA_MERGE_PAUSE_MS = 3000;
+
+function clearTranscriptState(): void {
+  transcriptReplicas = [];
+  partialReplica = null;
+  lastFinalTimestamp = null;
+  currentSpeaker = null;
+  updateTranscript();
+}
 
 function appendTranscriptReplica(speaker: string, text: string, eventTimestamp: number): void {
   const trimmedText = text.trim();
@@ -56,14 +71,6 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-function getPlatformForStartMessage(): 'meet' | 'zoom' | 'teams' | 'pachca' | undefined {
-  const host = window.location.hostname;
-  if (host.includes('pachca.com')) return 'pachca';
-  if (host.includes('meet.google.com')) return 'meet';
-  if (host.includes('zoom.us')) return 'zoom';
-  if (host.includes('teams.microsoft.com')) return 'teams';
-  return undefined;
-}
 
 function startSpeakerTracking(): void {
   stopSpeakerTracking();
@@ -72,16 +79,8 @@ function startSpeakerTracking(): void {
   speakerIntervalId = window.setInterval(() => {
     if (!isCapturing || !contentSessionId) return;
 
-    const host = window.location.hostname;
-    let info: { participantId: string; speaker: string | null } | null = null;
-
-    if (host.includes('pachca.com')) {
-      info = getPachcaActiveSpeaker();
-    } else if (host.includes('teams.microsoft.com') || host.includes('teams.live.com')) {
-      info = getTeamsActiveSpeaker();
-    } else {
-      return;
-    }
+    const info = platformAdapter.getActiveSpeaker();
+    if (!info) return;
 
     const nextSpeaker = info?.speaker ?? null;
 
@@ -105,6 +104,22 @@ function stopSpeakerTracking(): void {
     speakerIntervalId = null;
   }
 }
+
+recordingController = new RecordingController({
+  getIsCapturing: () => isCapturing,
+  setIsCapturing: (value) => {
+    isCapturing = value;
+  },
+  getSelectedLanguage,
+  getPlatformForStartMessage: () => platformAdapter.getPlatform(),
+  getAudioMode: () => platformAdapter.getAudioMode(),
+  shouldLogAudioMode: () => platformAdapter.supportsAudioModeSelection(),
+  updateStatus,
+  startSpeakerTracking,
+  stopSpeakerTracking,
+  clearTranscriptState,
+  trackModeController,
+});
 
 // Language options (currently supported by Vosk STT)
 const LANGUAGES = [
@@ -221,6 +236,7 @@ function createUIWidget() {
   `;
 
   const selectedLanguage = getSelectedLanguage();
+  const selectedAudioMode = platformAdapter.getAudioMode();
   const languageOptions = LANGUAGES.map(
     (lang) => `<option value="${lang.value}" ${lang.value === selectedLanguage ? 'selected' : ''}>${lang.label}</option>`
   ).join('');
@@ -290,6 +306,20 @@ function createUIWidget() {
         cursor: pointer;
       ">
         ${languageOptions}
+      </select>
+      <select id="livescribe-audio-mode" style="
+        width: 100%;
+        padding: 6px 8px;
+        margin-bottom: 8px;
+        border: 1px solid #d1d5db;
+        border-radius: 4px;
+        font-size: 12px;
+        background: white;
+        cursor: pointer;
+        display: ${platformAdapter.supportsAudioModeSelection() ? 'block' : 'none'};
+      " title="Pachca audio mode (applies on next start)">
+        <option value="per-track" ${selectedAudioMode === 'per-track' ? 'selected' : ''}>Pachca: Per-track</option>
+        <option value="mixed" ${selectedAudioMode === 'mixed' ? 'selected' : ''}>Pachca: Mixed</option>
       </select>
       <div style="display: flex; gap: 8px; margin-bottom: 8px;">
         <button id="livescribe-start" style="
@@ -369,6 +399,16 @@ function createUIWidget() {
     const target = e.target as HTMLSelectElement;
     saveSelectedLanguage(target.value);
   });
+  document.getElementById('livescribe-audio-mode')?.addEventListener('change', (e) => {
+      const target = e.target as HTMLSelectElement;
+      if (target.value === 'mixed' || target.value === 'per-track') {
+        platformAdapter.setAudioMode(target.value);
+        console.log('[LiveScribe] audio mode changed', {
+          platform: platformAdapter.getPlatform(),
+          mode: target.value,
+        });
+      }
+    });
 }
 
 // Setup drag and drop
@@ -529,6 +569,7 @@ function updateStatus(status: 'idle' | 'recording' | 'error' | 'waiting', error?
   const stopBtn = document.getElementById('livescribe-stop');
   const errorDiv = document.getElementById('livescribe-error');
   const languageSelect = document.getElementById('livescribe-language') as HTMLSelectElement | null;
+  const modeSelect = document.getElementById('livescribe-audio-mode') as HTMLSelectElement | null;
 
   if (!statusDot || !statusText || !startBtn || !stopBtn || !errorDiv) return;
 
@@ -544,6 +585,11 @@ function updateStatus(status: 'idle' | 'recording' | 'error' | 'waiting', error?
         languageSelect.style.opacity = '0.5';
         languageSelect.style.cursor = 'not-allowed';
       }
+      if (modeSelect) {
+        modeSelect.disabled = true;
+        modeSelect.style.opacity = '0.5';
+        modeSelect.style.cursor = 'not-allowed';
+      }
       break;
     case 'waiting':
       statusDot.style.background = '#f59e0b';
@@ -556,6 +602,11 @@ function updateStatus(status: 'idle' | 'recording' | 'error' | 'waiting', error?
         languageSelect.style.opacity = '0.5';
         languageSelect.style.cursor = 'not-allowed';
       }
+      if (modeSelect) {
+        modeSelect.disabled = true;
+        modeSelect.style.opacity = '0.5';
+        modeSelect.style.cursor = 'not-allowed';
+      }
       break;
     case 'error':
       statusDot.style.background = '#ef4444';
@@ -566,6 +617,11 @@ function updateStatus(status: 'idle' | 'recording' | 'error' | 'waiting', error?
         languageSelect.disabled = false;
         languageSelect.style.opacity = '1';
         languageSelect.style.cursor = 'pointer';
+      }
+      if (modeSelect) {
+        modeSelect.disabled = false;
+        modeSelect.style.opacity = '1';
+        modeSelect.style.cursor = 'pointer';
       }
       if (error) {
         errorDiv.textContent = error;
@@ -583,72 +639,24 @@ function updateStatus(status: 'idle' | 'recording' | 'error' | 'waiting', error?
         languageSelect.style.opacity = '1';
         languageSelect.style.cursor = 'pointer';
       }
+      if (modeSelect) {
+        modeSelect.disabled = false;
+        modeSelect.style.opacity = '1';
+        modeSelect.style.cursor = 'pointer';
+      }
   }
 }
 
 // Start capture - delegate to service worker + offscreen document
 async function handleStart() {
-  if (isCapturing) {
-    return;
-  }
-
-  try {
-    updateStatus('idle');
-
-    // Get selected language
-    const language = getSelectedLanguage();
-
-    // Ask service worker to start recording using tabCapture + offscreen
-    // Offscreen will handle WebSocket and forward transcripts to us
-    chrome.runtime.sendMessage(
-      { type: 'START_RECORDING', language, platform: getPlatformForStartMessage() },
-      (response) => {
-        if (chrome.runtime.lastError) {
-          console.error('Failed to start recording:', chrome.runtime.lastError);
-          updateStatus('error', chrome.runtime.lastError.message);
-          return;
-        }
-
-        if (response && response.error) {
-          console.error('Failed to start recording:', response.error);
-          updateStatus('error', response.error);
-          return;
-        }
-
-        // Success - service worker + offscreen will handle audio capture and transcripts
-        isCapturing = true;
-        updateStatus('recording');
-        startSpeakerTracking();
-        console.log('Recording started via service worker + offscreen');
-      }
-    );
-  } catch (err) {
-    console.error('Failed to start capture:', err);
-    updateStatus('error', (err as Error).message);
-  }
+  if (!recordingController) return;
+  await recordingController.start();
 }
 
 // Stop capture
 async function handleStop() {
-  isCapturing = false;
-  stopSpeakerTracking();
-
-  // Ask service worker to stop recording
-  chrome.runtime.sendMessage({ type: 'STOP_RECORDING' }, () => {
-    if (chrome.runtime.lastError) {
-      console.error('Failed to stop recording:', chrome.runtime.lastError);
-    }
-    console.log('Recording stopped via service worker');
-  });
-
-  // Clear transcript when stopping
-  transcriptReplicas = [];
-  partialReplica = null;
-  lastFinalTimestamp = null;
-  currentSpeaker = null;
-  updateTranscript();
-
-  updateStatus('idle');
+  if (!recordingController) return;
+  await recordingController.stop();
 }
 
 
@@ -729,6 +737,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       updateTranscript();
     } else if (wsMessage.type === 'status' && wsMessage.sessionId) {
       contentSessionId = wsMessage.sessionId;
+      trackModeController.ensureStarted('ws:status');
     }
     return false;
   }

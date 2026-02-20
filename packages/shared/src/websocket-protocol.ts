@@ -6,6 +6,8 @@ export interface AudioChunkMessage {
   sampleRate: 16000;
   channels: 1;
   chunk: string; // base64 encoded PCM Int16
+  participantId?: string;
+  speaker?: string | null;
 }
 
 export interface SpeakerUpdateMessage {
@@ -20,6 +22,7 @@ export interface StartSessionMessage {
   type: 'start';
   language: 'ru-RU' | 'en-US';
   platform?: 'meet' | 'zoom' | 'teams' | 'pachca';
+  audioMode?: 'per-track' | 'mixed';
 }
 
 export interface StopSessionMessage {

@@ -14,6 +14,7 @@ let audioContext: AudioContext | null = null;
 let mediaStream: MediaStream | null = null;
 let workletNode: AudioWorkletNode | null = null;
 let sourceNode: MediaStreamAudioSourceNode | null = null;
+let wsCloseInitiator: string = 'remote-or-unknown';
 
 // Connect to WebSocket
 function connect(): Promise<void> {
@@ -30,6 +31,7 @@ function connect(): Promise<void> {
     newWs.onopen = () => {
       console.log('WebSocket connected');
       ws = newWs;
+      wsCloseInitiator = 'remote-or-unknown';
       notifyServiceWorker({ type: 'WS_STATUS', status: 'connected' });
       if (!resolved) {
         resolved = true;
@@ -59,7 +61,13 @@ function connect(): Promise<void> {
     };
 
     newWs.onclose = (event) => {
-      console.log('WebSocket closed', event.code, event.reason);
+      const closeInfo = {
+        code: event.code,
+        reason: event.reason,
+        wasClean: event.wasClean,
+        initiator: wsCloseInitiator,
+      };
+      console.log('WebSocket closed', closeInfo);
       
       // If connection failed during connect attempt, reject the promise
       if (!resolved && !rejected) {
@@ -79,7 +87,7 @@ function connect(): Promise<void> {
       
       // Notify service worker about disconnection
       if (ws === newWs) {
-        notifyServiceWorker({ type: 'WS_STATUS', status: 'disconnected' });
+        notifyServiceWorker({ type: 'WS_STATUS', status: 'disconnected', closeInfo });
         ws = null;
       }
       
@@ -89,9 +97,10 @@ function connect(): Promise<void> {
 }
 
 // Disconnect WebSocket
-function disconnect() {
+function disconnect(reason = 'disconnect-called') {
   if (ws) {
-    ws.close();
+    wsCloseInitiator = reason;
+    ws.close(1000, reason);
     ws = null;
   }
   stopCapture();
@@ -281,7 +290,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       return true;
 
     case 'OFFSCREEN_DISCONNECT':
-      disconnect();
+      console.log('Offscreen disconnect requested', { reason: message.reason || 'offscreen-disconnect' });
+      disconnect(message.reason || 'offscreen-disconnect');
       sendResponse({ success: true });
       return true;
 
@@ -295,6 +305,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         type: 'start',
         language: message.language || 'ru-RU',
         platform: message.platform,
+        audioMode: message.audioMode,
       } as any);
       sendResponse({ success: true });
       return true;
@@ -320,7 +331,32 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       sendResponse({ success: true });
       return true;
 
+    case 'OFFSCREEN_TRACK_AUDIO_CHUNK':
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        sendResponse({ error: 'WebSocket is not connected. Please connect first.' });
+        return true;
+      }
+
+      if (!message.sessionId || !message.chunk) {
+        sendResponse({ error: 'Invalid track audio chunk payload' });
+        return true;
+      }
+
+      sendMessage({
+        type: 'audio',
+        sessionId: message.sessionId,
+        sampleRate: message.sampleRate || 16000,
+        channels: message.channels || 1,
+        chunk: message.chunk,
+        participantId: message.participantId,
+        speaker: message.speaker ?? null,
+      } as any);
+
+      sendResponse({ success: true });
+      return true;
+
     case 'OFFSCREEN_STOP_SESSION':
+      console.log('Offscreen stop session requested', { sessionId, reason: message.reason || 'offscreen-stop-session' });
       // Stop capture first
       stopCapture();
       // Then stop session

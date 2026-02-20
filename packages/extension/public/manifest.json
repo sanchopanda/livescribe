@@ -15,6 +15,16 @@
   "content_scripts": [
     {
       "matches": [
+        "https://*.pachca.com/*",
+        "https://app.pachca.com/*"
+      ],
+      "js": ["src/content/platforms/pachca/audio/per-track/webrtc-tracks-main.js"],
+      "run_at": "document_start",
+      "all_frames": false,
+      "world": "MAIN"
+    },
+    {
+      "matches": [
         "https://meet.google.com/*",
         "https://zoom.us/*",
         "https://*.zoom.us/*",

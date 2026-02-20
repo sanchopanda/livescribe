@@ -5,7 +5,7 @@ export interface PachcaSpeakerInfo {
 
 function getActiveSpeakerFromFilmstrip(): PachcaSpeakerInfo | null {
   const tile = document.querySelector<HTMLElement>(
-    '.filmstrip__videos [id^="participant_"].dominant-speaker'
+    '.filmstrip__videos [id^="participant_"].dominant-speaker',
   );
   if (!tile?.id) return null;
 

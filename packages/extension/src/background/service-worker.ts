@@ -1,6 +1,8 @@
 // Background service worker for LiveScribe extension
 // Coordinates between popup and offscreen document
 
+import { getPlatformCapabilities, resolveAudioMode } from '../platform/audio-mode-capabilities';
+
 console.log('LiveScribe background service worker initialized');
 
 // State
@@ -27,8 +29,8 @@ async function ensureOffscreen() {
     // Create offscreen document
     await chrome.offscreen.createDocument({
       url: 'offscreen.html',
-      reasons: [chrome.offscreen.Reason.AUDIO_PLAYBACK],
-      justification: 'WebSocket connection and audio capture for transcription',
+      reasons: [chrome.offscreen.Reason.USER_MEDIA],
+      justification: 'WebSocket session and media processing for transcription',
     });
 
     offscreenCreated = true;
@@ -59,6 +61,20 @@ async function sendToOffscreen(message: object): Promise<any> {
 
 // Helper function for offscreen recording
 function startRecordingOffscreen(message: any, sendResponse: (response: any) => void) {
+  const platformCapabilities = getPlatformCapabilities(message.platform);
+  const audioMode = resolveAudioMode(message.audioMode);
+  const shouldSkipTabCapture =
+    platformCapabilities.supportsPerTrackAudioMode && audioMode === 'per-track';
+
+  console.log('startRecordingOffscreen mode', {
+    platform: message.platform,
+    audioMode,
+    shouldSkipTabCapture,
+    supportsPerTrackAudioMode: platformCapabilities.supportsPerTrackAudioMode,
+    supportsMixedCapture: platformCapabilities.supportsMixedCapture,
+    hasProvidedStreamId: Boolean(message.streamId),
+  });
+
   // If streamId is provided from popup, use it directly
   if (message.streamId) {
     sendToOffscreen({ type: 'OFFSCREEN_CONNECT' })
@@ -73,14 +89,21 @@ function startRecordingOffscreen(message: any, sendResponse: (response: any) => 
             type: 'OFFSCREEN_START_SESSION',
             language: message.language || 'ru-RU',
             platform: message.platform,
+            audioMode,
           })
             .then((sessionResponse) => {
               if (sessionResponse && sessionResponse.error) {
                 sendResponse({ error: sessionResponse.error });
                 return;
               }
-              
+
               setTimeout(() => {
+                if (shouldSkipTabCapture) {
+                  currentStatus = 'recording';
+                  sendResponse({ success: true });
+                  return;
+                }
+
                 sendToOffscreen({ type: 'OFFSCREEN_START_CAPTURE', streamId: message.streamId })
                   .then((response) => {
                     if (!response.error) {
@@ -120,9 +143,16 @@ function startRecordingOffscreen(message: any, sendResponse: (response: any) => 
                 type: 'OFFSCREEN_START_SESSION',
                 language: message.language || 'ru-RU',
                 platform: message.platform,
+                audioMode,
               })
                 .then(() => {
                   setTimeout(() => {
+                    if (shouldSkipTabCapture) {
+                      currentStatus = 'recording';
+                      sendResponse({ success: true });
+                      return;
+                    }
+
                     sendToOffscreen({ type: 'OFFSCREEN_START_CAPTURE', streamId })
                       .then((response) => {
                         if (!response.error) {
@@ -143,10 +173,12 @@ function startRecordingOffscreen(message: any, sendResponse: (response: any) => 
 }
 
 // Helper function for stopping offscreen recording
-function stopRecordingOffscreen(sendResponse: (response: any) => void) {
-  sendToOffscreen({ type: 'OFFSCREEN_STOP_SESSION' })
+function stopRecordingOffscreen(sendResponse: (response: any) => void, reason = 'unknown') {
+  console.log('stopRecordingOffscreen called', { reason, currentStatus, sessionId, recordingTabId });
+
+  sendToOffscreen({ type: 'OFFSCREEN_STOP_SESSION', reason })
     .then(() => {
-      return sendToOffscreen({ type: 'OFFSCREEN_DISCONNECT' });
+      return sendToOffscreen({ type: 'OFFSCREEN_DISCONNECT', reason: `stopRecordingOffscreen:${reason}` });
     })
     .then((response) => {
       currentStatus = 'idle';
@@ -164,7 +196,7 @@ function stopRecordingOffscreen(sendResponse: (response: any) => void) {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Status updates from offscreen document
   if (message.type === 'WS_STATUS') {
-    console.log('WebSocket status:', message.status);
+    console.log('WebSocket status:', message.status, message.closeInfo || null);
     const previousStatus = currentStatus;
     
     if (message.status === 'connected') {
@@ -177,7 +209,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     } else if (message.status === 'disconnected') {
       // If we were recording, stop it first
       if (currentStatus === 'recording') {
-        sendToOffscreen({ type: 'OFFSCREEN_STOP_SESSION' }).catch(() => {});
+        console.warn('WS disconnected while recording, requesting OFFSCREEN_STOP_SESSION', {
+          closeInfo: message.closeInfo || null,
+          sessionId,
+          recordingTabId,
+        });
+        sendToOffscreen({
+          type: 'OFFSCREEN_STOP_SESSION',
+          reason: `ws-disconnected:${message.closeInfo?.code ?? 'no-code'}`,
+        }).catch(() => {});
       }
       // Only update status if not already idle (to avoid unnecessary updates)
       if (currentStatus !== 'idle') {
@@ -300,11 +340,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
+  if (message.type === 'TRACK_AUDIO_CHUNK') {
+    sendToOffscreen({
+      type: 'OFFSCREEN_TRACK_AUDIO_CHUNK',
+      sessionId: message.sessionId,
+      participantId: message.participantId,
+      speaker: message.speaker,
+      sampleRate: message.sampleRate,
+      channels: message.channels,
+      chunk: message.chunk,
+    }).catch(() => {
+      // ignore
+    });
+    return false;
+  }
+
   if (message.type === 'STOP_RECORDING') {
+    console.log('STOP_RECORDING received', {
+      senderTabId: sender.tab?.id ?? null,
+      recordingTabId,
+      sessionId,
+      currentStatus,
+    });
     recordingTabId = null;
 
     // Stop recording via offscreen document
-    stopRecordingOffscreen(sendResponse);
+    stopRecordingOffscreen(sendResponse, 'stop-recording-message');
     return true;
   }
 
