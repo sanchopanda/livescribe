@@ -5,17 +5,12 @@ Node.js backend for LiveScribe Chrome extension.
 ## Environment Variables
 
 ### General
-- `PORT` - Server port (default: 3001)
-- `STT_PROVIDER` - STT provider type: `deepgram` or `vosk` (default: `vosk`)
-- `DEEPGRAM_API_KEY` - Deepgram API key (required when `STT_PROVIDER=deepgram`)
+- `PORT` - server port (default: `3001`)
+- `STT_PROVIDER` - `deepgram`, `vosk`, or `whisper` (default: `vosk`)
+- `DEEPGRAM_API_KEY` - required when `STT_PROVIDER=deepgram`
 
-### Yandex SpeechKit
-- `YANDEX_SPEECHKIT_API_KEY` - Yandex Cloud API key (or use `YANDEX_IAM_TOKEN`)
-- `YANDEX_IAM_TOKEN` - Yandex Cloud IAM token (alternative to API key)
-- `YANDEX_FOLDER_ID` - Yandex Cloud Folder ID (required if using API key)
-
-### Vosk (Python Service)
-- `STT_SERVICE_URL` - Python STT service URL (default: `http://localhost:3002`)
+### Python STT service (Vosk / Whisper)
+- `STT_SERVICE_URL` - STT service URL (default: `http://127.0.0.1:3002`)
 
 ## Setup
 
@@ -24,11 +19,19 @@ Node.js backend for LiveScribe Chrome extension.
 npm install
 ```
 
-2. Create `.env` file (Deepgram example):
+2. Create `.env` file (examples):
 ```bash
+# Deepgram
 PORT=3001
 STT_PROVIDER=deepgram
 DEEPGRAM_API_KEY=your_deepgram_api_key_here
+```
+
+```bash
+# Whisper / Vosk via Python service
+PORT=3001
+STT_PROVIDER=whisper
+STT_SERVICE_URL=http://127.0.0.1:3002
 ```
 
 3. Run development server:
@@ -36,28 +39,27 @@ DEEPGRAM_API_KEY=your_deepgram_api_key_here
 npm run dev
 ```
 
-## Getting Deepgram API Key
-
-1. Go to [Deepgram Console](https://console.deepgram.com/)
-2. Create or open your project
-3. Generate an API key
-4. Put it into backend `.env` as `DEEPGRAM_API_KEY`
-
 ## STT Providers
 
 ### Deepgram (Cloud)
-- ✅ Streaming transcription with low latency
-- ⚠️ Diarization/multi-speaker segmentation is currently disabled in runtime (archived for future)
-- ❌ Requires internet
-- ❌ Paid service (free tier/add-ons depend on account)
+- ✅ Real-time streaming with low latency
+- ⚠️ Internet required
+- ⚠️ Paid service
 
-### Vosk (Local)
-- ✅ Works offline
+### Vosk (Local via Python service)
+- ✅ Offline
 - ✅ Free
-- ❌ Requires downloading models (~1.8 GB per language)
-- ❌ Lower accuracy than cloud services
+- ⚠️ Lower quality than cloud STT
+- ⚠️ Requires local Vosk models
 
-### Whisper (Local)
-- ✅ Works offline
-- ✅ Free
-- ❌ Currently not working (library issue)
+### Whisper (Local via Python service)
+- ✅ Offline
+- ✅ Better quality than Vosk in many cases
+- ⚠️ Higher CPU/GPU usage than Vosk
+- ⚠️ Higher latency than cloud streaming STT
+
+## Notes for `per-track` + Whisper
+
+- Backend creates a separate Whisper provider per participant track.
+- Provider initialization is synchronized to avoid race conditions.
+- For local STT use `STT_SERVICE_URL=http://127.0.0.1:3002` (IPv4), not `localhost` when local DNS/IPv6 causes issues.
