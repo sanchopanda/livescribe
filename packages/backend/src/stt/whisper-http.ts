@@ -1,13 +1,12 @@
-// Vosk STT implementation via HTTP API (Python service)
-// This allows using Python Vosk without native Node.js dependencies
-
 import type { STTProvider, STTResult, STTResultCallback } from './types.js';
+import { randomUUID } from 'node:crypto';
 
 const STT_SERVICE_URL = process.env.STT_SERVICE_URL || 'http://127.0.0.1:3002';
 
-export class VoskHTTPSTT implements STTProvider {
-  private language: string = 'ru';
+export class WhisperHTTPSTT implements STTProvider {
+  private language = 'ru';
   private initialized = false;
+  private readonly streamId = randomUUID();
 
   async initialize(language: string, _onResult?: STTResultCallback): Promise<void> {
     this.language = language;
@@ -16,31 +15,27 @@ export class VoskHTTPSTT implements STTProvider {
       const response = await fetch(`${STT_SERVICE_URL}/initialize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ language, engine: 'vosk' }),
+        body: JSON.stringify({ language, engine: 'whisper', stream_id: this.streamId }),
       });
 
       if (!response.ok) {
         const errorBody: any = await response.json().catch(() => null);
         const detail = typeof errorBody?.detail === 'string' ? errorBody.detail : null;
-        throw new Error(detail || `Failed to initialize STT service: ${response.statusText}`);
+        throw new Error(detail || `Failed to initialize Whisper service: ${response.statusText}`);
       }
 
       this.initialized = true;
-      // console.log(`Vosk STT initialized for language: ${language}`);
     } catch (err) {
-      // console.error('Failed to initialize Vosk STT service:', err);
-      throw new Error(`Vosk STT initialization failed: ${(err as Error).message}`);
+      throw new Error(`Whisper STT initialization failed: ${(err as Error).message}`);
     }
   }
 
   async processAudio(audioBuffer: Buffer, _format?: string): Promise<STTResult | null> {
-    // Vosk works with PCM only
     if (!this.initialized) {
-      throw new Error('Vosk not initialized. Call initialize() first.');
+      throw new Error('Whisper not initialized. Call initialize() first.');
     }
 
     try {
-      // Convert buffer to base64
       const base64 = audioBuffer.toString('base64');
 
       const response = await fetch(`${STT_SERVICE_URL}/process`, {
@@ -50,12 +45,17 @@ export class VoskHTTPSTT implements STTProvider {
           language: this.language,
           chunk: base64,
           sample_rate: 16000,
-          engine: 'vosk',
+          engine: 'whisper',
+          stream_id: this.streamId,
         }),
       });
 
       if (!response.ok) {
-        await response.json().catch(() => null);
+        const errorBody: any = await response.json().catch(() => null);
+        const detail = typeof errorBody?.detail === 'string' ? errorBody.detail : null;
+        if (detail) {
+          throw new Error(`Whisper process failed: ${detail}`);
+        }
         return null;
       }
 
@@ -72,7 +72,6 @@ export class VoskHTTPSTT implements STTProvider {
 
       return null;
     } catch {
-      // console.error('Vosk HTTP request error:', err);
       return null;
     }
   }
@@ -86,15 +85,19 @@ export class VoskHTTPSTT implements STTProvider {
       const response = await fetch(`${STT_SERVICE_URL}/finalize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ language: this.language, engine: 'vosk' }),
+        body: JSON.stringify({ language: this.language, engine: 'whisper', stream_id: this.streamId }),
       });
 
       if (!response.ok) {
+        const errorBody: any = await response.json().catch(() => null);
+        const detail = typeof errorBody?.detail === 'string' ? errorBody.detail : null;
+        if (detail) {
+          throw new Error(`Whisper finalize failed: ${detail}`);
+        }
         return null;
       }
 
       const result: any = await response.json();
-
       if (typeof result?.text === 'string' && result.text.trim()) {
         return {
           text: result.text.trim(),
@@ -106,25 +109,21 @@ export class VoskHTTPSTT implements STTProvider {
 
       return null;
     } catch {
-      // console.error('Vosk finalize error:', err);
       return null;
     }
   }
 
   async destroy(): Promise<void> {
-    // Reset recognizer on Python service
     try {
       await fetch(`${STT_SERVICE_URL}/reset`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ language: this.language, engine: 'vosk' }),
+        body: JSON.stringify({ language: this.language, engine: 'whisper', stream_id: this.streamId }),
       });
     } catch {
-      // Ignore errors on cleanup
+      // ignore cleanup errors
     }
 
     this.initialized = false;
-    // console.log('Vosk HTTP STT resources cleaned up');
   }
 }
-

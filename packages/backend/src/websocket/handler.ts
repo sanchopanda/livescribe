@@ -8,8 +8,8 @@ let wsConnectionSequence = 0;
 
 // Get STT provider type - read from env at runtime, not at module load
 // This ensures dotenv.config() has been called first
-function getSTTProviderType(): 'vosk' | 'deepgram' {
-  return (process.env.STT_PROVIDER as 'vosk' | 'deepgram') || 'vosk';
+function getSTTProviderType(): 'vosk' | 'deepgram' | 'whisper' {
+  return (process.env.STT_PROVIDER as 'vosk' | 'deepgram' | 'whisper') || 'vosk';
 }
 
 export function registerWebSocketHandler(server: FastifyInstance) {
@@ -18,8 +18,14 @@ export function registerWebSocketHandler(server: FastifyInstance) {
     const conn = `ws#${connectionId}`;
     let sessionId: string | null = null;
     let activeLanguage: 'ru-RU' | 'en-US' = 'ru-RU';
-    let activeProviderType: 'vosk' | 'deepgram' = getSTTProviderType();
-    const participantProviders = new Map<string, { provider: any; speaker: string | null }>();
+    let activeProviderType: 'vosk' | 'deepgram' | 'whisper' = getSTTProviderType();
+    type ParticipantProviderEntry = {
+      provider: any;
+      speaker: string | null;
+      ready: Promise<void>;
+    };
+
+    const participantProviders = new Map<string, ParticipantProviderEntry>();
     const participantChunkCount = new Map<string, number>();
 
     server.log.info({ conn }, 'WebSocket client connected');
@@ -189,9 +195,15 @@ export function registerWebSocketHandler(server: FastifyInstance) {
 
               if (!participantEntry) {
                 const participantProvider = createSTTProvider(activeProviderType);
+                const ready = participantProvider.initialize(activeLanguage, (result: any) => {
+                  const resolvedSpeaker = participantEntry?.speaker ?? formatParticipantFallback(participantId);
+                  sendTranscript(result, resolvedSpeaker || undefined);
+                });
+
                 participantEntry = {
                   provider: participantProvider,
                   speaker: normalizedParticipantSpeaker ?? null,
+                  ready,
                 };
 
                 participantProviders.set(participantId, participantEntry);
@@ -207,12 +219,21 @@ export function registerWebSocketHandler(server: FastifyInstance) {
                   'Participant STT provider created',
                 );
 
-                await participantProvider.initialize(activeLanguage, (result: any) => {
-                  const resolvedSpeaker = participantEntry?.speaker ?? formatParticipantFallback(participantId);
-                  sendTranscript(result, resolvedSpeaker || undefined);
-                });
+                try {
+                  await participantEntry.ready;
+                } catch (err) {
+                  participantProviders.delete(participantId);
+                  throw err;
+                }
               } else if (normalizedParticipantSpeaker) {
                 participantEntry.speaker = normalizedParticipantSpeaker;
+              }
+
+              try {
+                await participantEntry.ready;
+              } catch (err) {
+                participantProviders.delete(participantId);
+                throw err;
               }
 
               const format = (message as any).format;

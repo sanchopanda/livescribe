@@ -1154,6 +1154,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
       const speaker = normalizeSpeaker((wsMessage as any).speaker ?? currentSpeaker);
       const text = (wsMessage.text || '').trim();
+      const eventTimestamp = typeof wsMessage.timestamp === 'number' ? wsMessage.timestamp : Date.now();
+
+      if (
+        partialReplica &&
+        partialReplica.text.trim() &&
+        partialReplica.speaker !== speaker
+      ) {
+        appendTranscriptReplica(partialReplica.speaker, partialReplica.text, eventTimestamp);
+      }
+
       partialReplica = text
         ? { speaker, text }
         : null;
@@ -1167,6 +1177,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       const text = (wsMessage.text || '').trim();
       const speaker = normalizeSpeaker((wsMessage as any).speaker ?? currentSpeaker);
       const eventTimestamp = typeof wsMessage.timestamp === 'number' ? wsMessage.timestamp : Date.now();
+
+      if (
+        partialReplica &&
+        partialReplica.text.trim() &&
+        partialReplica.speaker !== speaker
+      ) {
+        appendTranscriptReplica(partialReplica.speaker, partialReplica.text, eventTimestamp);
+      }
 
       if (text) {
         appendTranscriptReplica(speaker, text, eventTimestamp);

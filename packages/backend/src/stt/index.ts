@@ -3,6 +3,7 @@
 import type { STTProvider, STTProviderType } from './types.js';
 import { VoskHTTPSTT } from './vosk-http.js';
 import { DeepgramSTT } from './deepgram.js';
+import { WhisperHTTPSTT } from './whisper-http.js';
 
 export function createSTTProvider(type: STTProviderType = 'vosk'): STTProvider {
   switch (type) {
@@ -11,6 +12,9 @@ export function createSTTProvider(type: STTProviderType = 'vosk'): STTProvider {
     
     case 'deepgram':
       return new DeepgramSTT();
+
+    case 'whisper':
+      return new WhisperHTTPSTT();
     
     default:
       throw new Error(`Unsupported STT provider type: ${type}`);

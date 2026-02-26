@@ -38,5 +38,5 @@ export interface STTProvider {
   destroy(): Promise<void>;
 }
 
-export type STTProviderType = 'vosk' | 'deepgram';
+export type STTProviderType = 'vosk' | 'deepgram' | 'whisper';
 
