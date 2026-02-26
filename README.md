@@ -4,7 +4,7 @@ Real-time transcription for video calls (Google Meet, Zoom, MS Teams, Pachca).
 
 ## Architecture
 
-Monorepo structure with pnpm workspaces:
+Monorepo structure with npm workspaces:
 - `packages/extension` - Chrome Extension (React + TypeScript)
 - `packages/backend` - WebSocket server (Node.js + Fastify)
 - `packages/shared` - Shared TypeScript types
@@ -17,7 +17,27 @@ Monorepo structure with pnpm workspaces:
 Mode availability is capability-driven per platform in
 `packages/extension/src/platform/audio-mode-capabilities.ts`.
 
-`start` WebSocket payload now includes optional `platform` and `audioMode`.
+`start` WebSocket payload includes optional `platform` and `audioMode`.
+
+### Current recording UX
+
+- `Stop` pauses recording/transcription state (does not clear transcript/timers).
+- `Reset` clears transcript and accumulated counters.
+- UI shows:
+  - recording duration;
+  - cumulative audio seconds sent to Deepgram;
+  - live audio levels:
+    - `mixed`: one current track level;
+    - `per-track`: participant list with per-speaker levels.
+- UI shows WebSocket recovery state (`WS recovering...` / `WS recovered`).
+
+### Per-track VAD behavior
+
+- Speech open threshold: `rmsOn = 0.02`
+- Speech close threshold: `rmsOff = 0.01`
+- Peak override: `peakOverride = 0.12`
+- Hangover window: `1000ms`
+- Pre-roll before open: `500ms` buffered audio (to reduce clipped starts)
 
 ## Prerequisites
 
@@ -27,14 +47,13 @@ Mode availability is capability-driven per platform in
 ## Installation
 
 ```bash
-# Install dependencies
 npm install
 ```
 
 ## Development
 
 ```bash
-# Run both backend and extension in watch mode
+# Run backend + extension in watch mode
 npm run dev
 
 # Or run separately:
@@ -48,7 +67,7 @@ npm run dev:extension # Extension build in watch mode
 # Build all packages
 npm run build
 
-# Or build individually:
+# Or build individually
 npm run build:backend
 npm run build:extension
 ```
@@ -57,20 +76,20 @@ npm run build:extension
 
 1. Build the extension: `npm run build:extension`
 2. Open Chrome and navigate to `chrome://extensions`
-3. Enable "Developer mode" (toggle in top right)
+3. Enable "Developer mode"
 4. Click "Load unpacked"
-5. Select `packages/extension/dist` folder
+5. Select `packages/extension/dist`
 
 ## Project Status
 
-Current phase: **MVP+ - Platform-aware capture + WebSocket**
+Current phase: **MVP+ - Platform-aware capture + resilient streaming**
 
 - ✅ Monorepo structure
-- 🔄 WebSocket communication
-- 🔄 Audio capture (chrome.tabCapture)
+- 🔄 WebSocket communication + recovery
+- 🔄 Audio capture (`mixed` + `per-track`)
 - ✅ STT integration (Deepgram + Vosk)
-- ✅ Pachca per-track capture mode
-- 🔄 Capability-based platform scaling (Meet/Zoom/Teams mixed mode)
+- ✅ Pachca per-track mode
+- 🔄 Capability-based scaling (Meet/Zoom/Teams mixed mode)
 
 ## License
 
