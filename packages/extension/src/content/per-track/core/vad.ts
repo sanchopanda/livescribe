@@ -6,8 +6,8 @@ export interface TrackVadState {
 }
 
 export const VAD_DEFAULTS = {
-  rmsOn: 0.008,
-  rmsOff: 0.005,
+  rmsOn: 0.02,
+  rmsOff: 0.01,
   peakOverride: 0.12,
   hangoverMs: 1000,
 } as const;
@@ -52,4 +52,3 @@ export function decideVad(
 
   return { shouldSend, opened, closed, state };
 }
-

@@ -10,6 +10,22 @@ console.log('[LiveScribe] content build marker: 2026-02-20-track-transcriber-dia
 let isCapturing = false;
 let contentSessionId: string | null = null;
 let isMinimized = false;
+let recordingStartedAtMs: number | null = null;
+let recordingPausedSeconds = 0;
+let deepgramAudioSeconds = 0;
+let metricsTickerId: number | null = null;
+let wsRecovering = false;
+let wsRecoveredToastUntilMs = 0;
+let wsRecoveredToastTimerId: number | null = null;
+let audioLevelsMode: 'mixed' | 'per-track' = 'mixed';
+let mixedAudioLevel: { rms: number; peak: number; timestamp: number } | null = null;
+let speakerAudioLevels: Array<{
+  participantId: string;
+  speaker: string | null;
+  rms: number;
+  peak: number;
+  timestamp: number;
+}> = [];
 
 let currentSpeaker: string | null = null;
 let speakerIntervalId: number | null = null;
@@ -47,6 +63,19 @@ function appendTranscriptReplica(speaker: string, text: string, eventTimestamp: 
   const withinMergePause =
     lastFinalTimestamp !== null &&
     eventTimestamp - lastFinalTimestamp <= REPLICA_MERGE_PAUSE_MS;
+
+  if (lastReplica && lastReplica.speaker === speaker) {
+    const normalizedLastText = lastReplica.text.trim();
+    const isExactDuplicate = normalizedLastText === trimmedText;
+    const isContainedDuplicate =
+      normalizedLastText.endsWith(trimmedText) ||
+      trimmedText.endsWith(normalizedLastText);
+
+    if (isExactDuplicate || isContainedDuplicate) {
+      lastFinalTimestamp = eventTimestamp;
+      return;
+    }
+  }
 
   if (lastReplica && lastReplica.speaker === speaker && withinMergePause) {
     lastReplica.text = `${lastReplica.text} ${trimmedText}`.trim();
@@ -105,6 +134,285 @@ function stopSpeakerTracking(): void {
   }
 }
 
+function formatDuration(secondsTotal: number): string {
+  const safeSeconds = Math.max(0, Math.floor(secondsTotal));
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const seconds = safeSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds
+      .toString()
+      .padStart(2, '0')}`;
+  }
+
+  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+}
+
+function getCurrentRecordingSeconds(): number {
+  const currentSegmentSeconds = recordingStartedAtMs
+    ? Math.max(0, Math.floor((Date.now() - recordingStartedAtMs) / 1000))
+    : 0;
+
+  return Math.max(0, recordingPausedSeconds + currentSegmentSeconds);
+}
+
+function renderAudioMetrics(): void {
+  const recordingValue = document.getElementById('livescribe-recording-seconds');
+  const deepgramValue = document.getElementById('livescribe-deepgram-seconds');
+
+  if (recordingValue) {
+    recordingValue.textContent = formatDuration(getCurrentRecordingSeconds());
+  }
+  if (deepgramValue) {
+    deepgramValue.textContent = formatDuration(deepgramAudioSeconds);
+  }
+}
+
+function startMetricsTicker(): void {
+  if (metricsTickerId !== null) return;
+
+  metricsTickerId = window.setInterval(() => {
+    renderAudioMetrics();
+  }, 1000);
+}
+
+function stopMetricsTicker(): void {
+  if (metricsTickerId !== null) {
+    window.clearInterval(metricsTickerId);
+    metricsTickerId = null;
+  }
+}
+
+function applyAudioMetrics(update: {
+  recordingStartedAtMs?: number | null;
+  recordingSeconds?: number;
+  deepgramSeconds?: number;
+}): void {
+  if (Object.prototype.hasOwnProperty.call(update, 'recordingStartedAtMs')) {
+    recordingStartedAtMs = update.recordingStartedAtMs ? Date.now() : null;
+  } else if (typeof update.recordingSeconds === 'number' && update.recordingSeconds > 0) {
+    recordingStartedAtMs = isCapturing ? Date.now() : null;
+  }
+
+  if (typeof update.recordingSeconds === 'number' && Number.isFinite(update.recordingSeconds)) {
+    recordingPausedSeconds = Math.max(0, Math.floor(update.recordingSeconds));
+  }
+
+  if (typeof update.deepgramSeconds === 'number' && Number.isFinite(update.deepgramSeconds)) {
+    deepgramAudioSeconds = Math.max(0, Math.floor(update.deepgramSeconds));
+  }
+
+  if (isCapturing && recordingStartedAtMs) {
+    startMetricsTicker();
+  } else {
+    stopMetricsTicker();
+  }
+
+  renderAudioMetrics();
+}
+
+function resetAudioMetrics(): void {
+  recordingStartedAtMs = null;
+  recordingPausedSeconds = 0;
+  deepgramAudioSeconds = 0;
+  stopMetricsTicker();
+  renderAudioMetrics();
+}
+
+function requestCurrentStatusAndMetrics(): void {
+  chrome.runtime.sendMessage({ type: 'GET_STATUS' }, (response) => {
+    if (chrome.runtime.lastError || !response) {
+      return;
+    }
+
+    if (response.status === 'recording') {
+      isCapturing = true;
+      contentSessionId = response.sessionId || contentSessionId;
+      wsRecovering = response.wsRecovering === true;
+      updateStatus('recording');
+      applyAudioMetrics({
+        recordingStartedAtMs: response.recordingStartedAtMs ?? null,
+        recordingSeconds: response.recordingSeconds,
+        deepgramSeconds: response.deepgramSeconds,
+      });
+      return;
+    }
+
+    isCapturing = false;
+    wsRecovering = false;
+    clearRecoveredToast();
+    updateStatus('idle');
+    applyAudioMetrics({
+      recordingStartedAtMs: null,
+      recordingSeconds: response.recordingSeconds,
+      deepgramSeconds: response.deepgramSeconds,
+    });
+  });
+}
+
+function renderWsRecoveryIndicator(): void {
+  const wsRecovery = document.getElementById('livescribe-ws-recovery');
+  if (!wsRecovery) return;
+
+  if (isCapturing && wsRecovering) {
+    wsRecovery.style.display = 'block';
+    wsRecovery.textContent = 'WS recovering...';
+    wsRecovery.style.background = '#fff7ed';
+    wsRecovery.style.color = '#9a3412';
+    wsRecovery.style.borderColor = '#fdba74';
+    return;
+  }
+
+  if (isCapturing && Date.now() < wsRecoveredToastUntilMs) {
+    wsRecovery.style.display = 'block';
+    wsRecovery.textContent = 'WS recovered';
+    wsRecovery.style.background = '#ecfdf5';
+    wsRecovery.style.color = '#166534';
+    wsRecovery.style.borderColor = '#86efac';
+    return;
+  }
+
+  wsRecovery.style.display = 'none';
+  wsRecovery.textContent = '';
+}
+
+function clearRecoveredToast(): void {
+  wsRecoveredToastUntilMs = 0;
+  if (wsRecoveredToastTimerId !== null) {
+    clearTimeout(wsRecoveredToastTimerId);
+    wsRecoveredToastTimerId = null;
+  }
+}
+
+function showRecoveredToast(durationMs = 3000): void {
+  clearRecoveredToast();
+  wsRecoveredToastUntilMs = Date.now() + durationMs;
+  wsRecoveredToastTimerId = window.setTimeout(() => {
+    wsRecoveredToastTimerId = null;
+    wsRecoveredToastUntilMs = 0;
+    renderWsRecoveryIndicator();
+  }, durationMs);
+  renderWsRecoveryIndicator();
+}
+
+function normalizeAudioLevel(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
+}
+
+function formatParticipantFallback(participantId: string): string {
+  const normalized = participantId.replace(/^participant_/i, '').trim();
+  if (!normalized) return 'Participant';
+
+  const shortId = normalized.length > 18 ? `${normalized.slice(0, 8)}…${normalized.slice(-6)}` : normalized;
+  return `Participant ${shortId}`;
+}
+
+function formatRmsValue(value: number): string {
+  return normalizeAudioLevel(value).toFixed(5);
+}
+
+function renderAudioLevels(): void {
+  const levelsContainer = document.getElementById('livescribe-audio-levels');
+  const levelsContent = document.getElementById('livescribe-audio-levels-content');
+
+  if (!levelsContainer || !levelsContent) return;
+
+  levelsContainer.style.display = isCapturing ? 'block' : 'none';
+  if (!isCapturing) return;
+
+  if (audioLevelsMode === 'per-track') {
+    if (speakerAudioLevels.length === 0) {
+      levelsContent.innerHTML = '<div style="font-size: 11px; color: #6b7280;">Waiting for speakers...</div>';
+      return;
+    }
+
+    levelsContent.innerHTML = speakerAudioLevels
+      .map((speakerLevel) => {
+        const label = escapeHtml(
+          (typeof speakerLevel.speaker === 'string' && speakerLevel.speaker.trim()) ||
+            formatParticipantFallback(speakerLevel.participantId),
+        );
+        const barWidth = Math.round(normalizeAudioLevel(speakerLevel.rms) * 100);
+        const rmsValue = formatRmsValue(speakerLevel.rms);
+
+        return `
+          <div style="margin-top: 6px;">
+            <div style="display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: #374151; margin-bottom: 3px;">
+              <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${label}</span>
+              <span style="font-variant-numeric: tabular-nums; color: #6b7280;">RMS ${rmsValue}</span>
+            </div>
+            <div style="height: 6px; background: #e5e7eb; border-radius: 999px; overflow: hidden;">
+              <div style="height: 100%; width: ${barWidth}%; background: #3b82f6; border-radius: 999px;"></div>
+            </div>
+          </div>
+        `;
+      })
+      .join('');
+    return;
+  }
+
+  const mixedRms = normalizeAudioLevel(mixedAudioLevel?.rms ?? 0);
+  const mixedBarWidth = Math.round(mixedRms * 100);
+  levelsContent.innerHTML = `
+    <div style="font-size: 11px; color: #374151; margin-bottom: 4px;">Current track level (RMS)</div>
+    <div style="height: 8px; background: #e5e7eb; border-radius: 999px; overflow: hidden;">
+      <div style="height: 100%; width: ${mixedBarWidth}%; background: #10b981; border-radius: 999px;"></div>
+    </div>
+    <div style="font-size: 11px; color: #6b7280; margin-top: 4px; font-variant-numeric: tabular-nums; text-align: right;">RMS ${formatRmsValue(mixedRms)}</div>
+  `;
+}
+
+function applyAudioLevelsSnapshot(message: {
+  mode?: 'mixed' | 'per-track';
+  mixed?: { rms?: number; peak?: number; timestamp?: number } | null;
+  speakers?: Array<{
+    participantId?: string;
+    speaker?: string | null;
+    rms?: number;
+    peak?: number;
+    timestamp?: number;
+  }>;
+}): void {
+  if (message.mode === 'mixed' || message.mode === 'per-track') {
+    audioLevelsMode = message.mode;
+  }
+
+  if (message.mixed) {
+    mixedAudioLevel = {
+      rms: normalizeAudioLevel(message.mixed.rms),
+      peak: normalizeAudioLevel(message.mixed.peak),
+      timestamp: typeof message.mixed.timestamp === 'number' ? message.mixed.timestamp : Date.now(),
+    };
+  } else {
+    mixedAudioLevel = null;
+  }
+
+  if (Array.isArray(message.speakers)) {
+    speakerAudioLevels = message.speakers
+      .filter((entry) => typeof entry.participantId === 'string' && entry.participantId.length > 0)
+      .map((entry) => ({
+        participantId: entry.participantId as string,
+        speaker: typeof entry.speaker === 'string' ? entry.speaker : null,
+        rms: normalizeAudioLevel(entry.rms),
+        peak: normalizeAudioLevel(entry.peak),
+        timestamp: typeof entry.timestamp === 'number' ? entry.timestamp : Date.now(),
+      }));
+  } else {
+    speakerAudioLevels = [];
+  }
+
+  renderAudioLevels();
+}
+
+function resetAudioLevels(): void {
+  audioLevelsMode = 'mixed';
+  mixedAudioLevel = null;
+  speakerAudioLevels = [];
+  renderAudioLevels();
+}
+
 recordingController = new RecordingController({
   getIsCapturing: () => isCapturing,
   setIsCapturing: (value) => {
@@ -117,7 +425,6 @@ recordingController = new RecordingController({
   updateStatus,
   startSpeakerTracking,
   stopSpeakerTracking,
-  clearTranscriptState,
   trackModeController,
 });
 
@@ -208,6 +515,12 @@ function createUIWidget() {
 
   const position = getWidgetPosition();
   const size = getWidgetSize();
+  const clampedLeft = Math.max(0, Math.min(window.innerWidth - size.width, position.x));
+  const clampedTop = Math.max(0, Math.min(window.innerHeight - size.height, position.y));
+
+  if (clampedLeft !== position.x || clampedTop !== position.y) {
+    saveWidgetPosition(clampedLeft, clampedTop);
+  }
   // Always create widget expanded, regardless of saved state
   isMinimized = false;
 
@@ -215,12 +528,12 @@ function createUIWidget() {
   widget.id = 'livescribe-widget';
   widget.style.cssText = `
     position: fixed;
-    left: ${position.x}px;
-    top: ${position.y}px;
+    left: ${clampedLeft}px;
+    top: ${clampedTop}px;
     width: ${size.width}px;
     height: ${size.height}px;
     min-width: 200px;
-    min-height: 150px;
+    min-height: 240px;
     max-width: 800px;
     max-height: 600px;
     z-index: 999999;
@@ -346,6 +659,42 @@ function createUIWidget() {
           display: none;
         ">Stop</button>
       </div>
+      <button id="livescribe-reset" style="
+        width: 100%;
+        padding: 6px 12px;
+        margin-bottom: 8px;
+        background: #6b7280;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 500;
+      ">Reset</button>
+      <div style="margin-bottom: 8px; padding: 8px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 4px; font-size: 11px; color: #374151;">
+        <div style="display: flex; justify-content: space-between; gap: 8px;">
+          <span>Recording:</span>
+          <span id="livescribe-recording-seconds" style="font-variant-numeric: tabular-nums; font-weight: 600;">00:00</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; gap: 8px; margin-top: 4px;">
+          <span>Sent to Deepgram:</span>
+          <span id="livescribe-deepgram-seconds" style="font-variant-numeric: tabular-nums; font-weight: 600;">00:00</span>
+        </div>
+      </div>
+      <div id="livescribe-ws-recovery" style="
+        margin-bottom: 8px;
+        padding: 6px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        background: #fff7ed;
+        color: #9a3412;
+        border: 1px solid #fdba74;
+        display: none;
+      "></div>
+      <div id="livescribe-audio-levels" style="display: none; margin-bottom: 8px; padding: 8px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 4px;">
+        <div style="font-size: 11px; color: #374151; font-weight: 600; margin-bottom: 4px;">Audio levels</div>
+        <div id="livescribe-audio-levels-content"></div>
+      </div>
       <div id="livescribe-transcript" style="
         flex: 1;
         padding: 8px;
@@ -354,7 +703,7 @@ function createUIWidget() {
         font-size: 12px;
         overflow-y: auto;
         overflow-x: hidden;
-        min-height: 40px;
+        min-height: 80px;
         display: none;
       ">
         <div id="livescribe-speaker" style="color: #6b7280; font-size: 11px; margin-bottom: 6px; display: none;"></div>
@@ -393,6 +742,7 @@ function createUIWidget() {
   // Add event listeners
   document.getElementById('livescribe-start')?.addEventListener('click', handleStart);
   document.getElementById('livescribe-stop')?.addEventListener('click', handleStop);
+  document.getElementById('livescribe-reset')?.addEventListener('click', handleReset);
   document.getElementById('livescribe-minimize')?.addEventListener('click', toggleMinimize);
   document.getElementById('livescribe-close')?.addEventListener('click', closeWidget);
   document.getElementById('livescribe-language')?.addEventListener('change', (e) => {
@@ -409,6 +759,11 @@ function createUIWidget() {
         });
       }
     });
+
+  renderAudioMetrics();
+  renderWsRecoveryIndicator();
+  renderAudioLevels();
+  requestCurrentStatusAndMetrics();
 }
 
 // Setup drag and drop
@@ -477,7 +832,7 @@ function setupResize(widget: HTMLElement): void {
     const deltaX = e.clientX - startX;
     const deltaY = e.clientY - startY;
     const newWidth = Math.max(200, Math.min(800, startWidth + deltaX));
-    const newHeight = Math.max(150, Math.min(600, startHeight + deltaY));
+    const newHeight = Math.max(240, Math.min(600, startHeight + deltaY));
     widget.style.width = `${newWidth}px`;
     widget.style.height = `${newHeight}px`;
   });
@@ -537,10 +892,15 @@ function updateTranscript() {
   
   if (!transcriptDiv || !transcriptTextDiv) return;
 
-  const lines = transcriptReplicas.map((replica) => {
+  const lines = transcriptReplicas.map((replica, index) => {
     const speaker = escapeHtml(replica.speaker);
     const text = escapeHtml(replica.text);
-    return `<div style="margin-bottom: 6px;"><span style="font-weight: 600;">${speaker}:</span> ${text}</div>`;
+    const previousSpeaker = index > 0 ? transcriptReplicas[index - 1].speaker : null;
+    const showSpeakerLabel = previousSpeaker !== replica.speaker;
+
+    return showSpeakerLabel
+      ? `<div style="margin-bottom: 6px;"><span style="font-weight: 600;">${speaker}:</span> ${text}</div>`
+      : `<div style="margin-bottom: 6px; padding-left: 6px;">${text}</div>`;
   });
 
   if (partialReplica && partialReplica.text.trim()) {
@@ -570,6 +930,7 @@ function updateStatus(status: 'idle' | 'recording' | 'error' | 'waiting', error?
   const errorDiv = document.getElementById('livescribe-error');
   const languageSelect = document.getElementById('livescribe-language') as HTMLSelectElement | null;
   const modeSelect = document.getElementById('livescribe-audio-mode') as HTMLSelectElement | null;
+  const audioLevelsContainer = document.getElementById('livescribe-audio-levels');
 
   if (!statusDot || !statusText || !startBtn || !stopBtn || !errorDiv) return;
 
@@ -590,6 +951,11 @@ function updateStatus(status: 'idle' | 'recording' | 'error' | 'waiting', error?
         modeSelect.style.opacity = '0.5';
         modeSelect.style.cursor = 'not-allowed';
       }
+      if (audioLevelsContainer) {
+        audioLevelsContainer.style.display = 'block';
+      }
+      renderWsRecoveryIndicator();
+      renderAudioLevels();
       break;
     case 'waiting':
       statusDot.style.background = '#f59e0b';
@@ -607,6 +973,10 @@ function updateStatus(status: 'idle' | 'recording' | 'error' | 'waiting', error?
         modeSelect.style.opacity = '0.5';
         modeSelect.style.cursor = 'not-allowed';
       }
+      if (audioLevelsContainer) {
+        audioLevelsContainer.style.display = 'none';
+      }
+      renderWsRecoveryIndicator();
       break;
     case 'error':
       statusDot.style.background = '#ef4444';
@@ -627,6 +997,10 @@ function updateStatus(status: 'idle' | 'recording' | 'error' | 'waiting', error?
         errorDiv.textContent = error;
         errorDiv.style.display = 'block';
       }
+      if (audioLevelsContainer) {
+        audioLevelsContainer.style.display = 'none';
+      }
+      renderWsRecoveryIndicator();
       break;
     default:
       statusDot.style.background = '#9ca3af';
@@ -644,6 +1018,10 @@ function updateStatus(status: 'idle' | 'recording' | 'error' | 'waiting', error?
         modeSelect.style.opacity = '1';
         modeSelect.style.cursor = 'pointer';
       }
+      if (audioLevelsContainer) {
+        audioLevelsContainer.style.display = 'none';
+      }
+      renderWsRecoveryIndicator();
   }
 }
 
@@ -651,12 +1029,47 @@ function updateStatus(status: 'idle' | 'recording' | 'error' | 'waiting', error?
 async function handleStart() {
   if (!recordingController) return;
   await recordingController.start();
+  if (isCapturing && !recordingStartedAtMs) {
+    recordingStartedAtMs = Date.now();
+    startMetricsTicker();
+    renderAudioMetrics();
+  }
 }
 
 // Stop capture
 async function handleStop() {
   if (!recordingController) return;
   await recordingController.stop();
+  wsRecovering = false;
+  clearRecoveredToast();
+  renderWsRecoveryIndicator();
+}
+
+async function handleReset() {
+  clearTranscriptState();
+  resetAudioMetrics();
+  resetAudioLevels();
+  wsRecovering = false;
+  clearRecoveredToast();
+  renderWsRecoveryIndicator();
+
+  chrome.runtime.sendMessage(
+    {
+      type: 'RESET_RECORDING_STATE',
+      keepRunning: isCapturing,
+    },
+    (response) => {
+      if (chrome.runtime.lastError || !response) {
+        return;
+      }
+
+      applyAudioMetrics({
+        recordingStartedAtMs: response.recordingStartedAtMs,
+        recordingSeconds: response.recordingSeconds,
+        deepgramSeconds: response.deepgramSeconds,
+      });
+    },
+  );
 }
 
 
@@ -677,8 +1090,41 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     sendResponse({
       status: isCapturing ? 'recording' : 'idle',
       sessionId: contentSessionId,
+      recordingStartedAtMs,
+      recordingSeconds: getCurrentRecordingSeconds(),
+      deepgramSeconds: deepgramAudioSeconds,
     });
     return true;
+  }
+
+  if (message.type === 'CONTENT_AUDIO_METRICS') {
+    applyAudioMetrics({
+      recordingStartedAtMs: message.recordingStartedAtMs,
+      recordingSeconds: message.recordingSeconds,
+      deepgramSeconds: message.deepgramSeconds,
+    });
+
+    return false;
+  }
+
+  if (message.type === 'CONTENT_AUDIO_LEVELS') {
+    applyAudioLevelsSnapshot({
+      mode: message.mode,
+      mixed: message.mixed,
+      speakers: message.speakers,
+    });
+    return false;
+  }
+
+  if (message.type === 'CONTENT_WS_RECOVERY_STATUS') {
+    const wasRecovering = wsRecovering;
+    wsRecovering = message.recovering === true;
+    if (wasRecovering && !wsRecovering && isCapturing) {
+      showRecoveredToast(3000);
+      return false;
+    }
+    renderWsRecoveryIndicator();
+    return false;
   }
 
   if (message.type === 'CONTENT_TOGGLE_WIDGET') {
@@ -708,13 +1154,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
       const speaker = normalizeSpeaker((wsMessage as any).speaker ?? currentSpeaker);
       const text = (wsMessage.text || '').trim();
-
-      // If speaker changed while we had an in-progress partial,
-      // commit previous partial as its own replica to preserve dialogue order.
-      if (partialReplica && partialReplica.speaker !== speaker && partialReplica.text.trim()) {
-        appendTranscriptReplica(partialReplica.speaker, partialReplica.text, Date.now());
-      }
-
       partialReplica = text
         ? { speaker, text }
         : null;

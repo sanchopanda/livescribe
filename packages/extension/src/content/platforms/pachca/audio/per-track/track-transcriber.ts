@@ -34,7 +34,19 @@ interface ChunkTrackStats {
   maxPeak: number;
 }
 
+interface BufferedTrackChunk {
+  chunk: ArrayBuffer;
+  byteLength: number;
+}
+
 const RESCAN_INTERVAL_MS = 1500;
+const AUDIO_LEVEL_SEND_INTERVAL_MS = 200;
+const PRE_ROLL_MS = 500;
+const PRE_ROLL_SAMPLE_RATE = 16000;
+const PRE_ROLL_CHANNELS = 1;
+const PRE_ROLL_BYTES_PER_SAMPLE = 2;
+const PRE_ROLL_MAX_BYTES =
+  PRE_ROLL_SAMPLE_RATE * PRE_ROLL_CHANNELS * PRE_ROLL_BYTES_PER_SAMPLE * (PRE_ROLL_MS / 1000);
 const TRACK_DEBUG = localStorage.getItem('livescribe-track-transcriber-debug') !== '0';
 const WEBRTC_REGISTRY_SELECTOR = 'audio[data-livescribe-source="webrtc-registry"]';
 
@@ -164,10 +176,14 @@ export class PachcaTrackTranscriber {
   private startupDiagnosticsTimerId: number | null = null;
   private chunkStatsTimerId: number | null = null;
   private lastMapSignature: string | null = null;
+  private lastMainWorldSnapshotSignature: string | null = null;
   private webRTCMessageListenerAttached = false;
   private missingTrackLogged = new Set<string>();
   private chunkStatsByTrackId = new Map<string, ChunkTrackStats>();
   private vadStateByTrackId = new Map<string, TrackVadState>();
+  private lastLevelSentAtByTrackId = new Map<string, number>();
+  private preRollChunksByTrackId = new Map<string, BufferedTrackChunk[]>();
+  private preRollBytesByTrackId = new Map<string, number>();
 
   async start(sessionId: string): Promise<void> {
     if (this.running) {
@@ -282,6 +298,10 @@ export class PachcaTrackTranscriber {
     this.missingTrackLogged.clear();
     this.chunkStatsByTrackId.clear();
     this.vadStateByTrackId.clear();
+    this.lastLevelSentAtByTrackId.clear();
+    this.preRollChunksByTrackId.clear();
+    this.preRollBytesByTrackId.clear();
+    this.lastMainWorldSnapshotSignature = null;
   }
 
   private attachWebRTCMainMessageListener(): void {
@@ -306,6 +326,16 @@ export class PachcaTrackTranscriber {
     }
 
     const tracks = (data.tracks || []) as MainWorldWebRTCTrackSnapshot[];
+    const signature = tracks
+      .map((track) => `${track.trackId}|${track.streamId ?? 'none'}|${track.endpointId ?? 'none'}`)
+      .sort()
+      .join(';');
+
+    if (signature === this.lastMainWorldSnapshotSignature) {
+      return;
+    }
+    this.lastMainWorldSnapshotSignature = signature;
+
     console.log('[LiveScribe][Pachca][TrackTranscriber] MAIN-world snapshot', {
       reason: data.reason,
       tracks: tracks.length,
@@ -458,6 +488,63 @@ export class PachcaTrackTranscriber {
         participantId: capture.participantId,
         speaker: capture.speaker,
       });
+      this.preRollChunksByTrackId.delete(track.id);
+      this.preRollBytesByTrackId.delete(track.id);
+    });
+  }
+
+  private bufferPreRollChunk(trackId: string, chunk: ArrayBuffer): void {
+    const clonedChunk = chunk.slice(0);
+    const chunkInfo: BufferedTrackChunk = {
+      chunk: clonedChunk,
+      byteLength: clonedChunk.byteLength,
+    };
+
+    const chunks = this.preRollChunksByTrackId.get(trackId) || [];
+    chunks.push(chunkInfo);
+    this.preRollChunksByTrackId.set(trackId, chunks);
+
+    const currentBytes = this.preRollBytesByTrackId.get(trackId) || 0;
+    let totalBytes = currentBytes + chunkInfo.byteLength;
+
+    while (chunks.length > 0 && totalBytes > PRE_ROLL_MAX_BYTES) {
+      const removed = chunks.shift();
+      if (!removed) break;
+      totalBytes -= removed.byteLength;
+    }
+
+    this.preRollBytesByTrackId.set(trackId, Math.max(0, totalBytes));
+  }
+
+  private consumePreRollChunks(trackId: string): BufferedTrackChunk[] {
+    const chunks = this.preRollChunksByTrackId.get(trackId) || [];
+    this.preRollChunksByTrackId.delete(trackId);
+    this.preRollBytesByTrackId.delete(trackId);
+    return chunks;
+  }
+
+  private sendPcmChunkToOffscreen(
+    chunk: ArrayBuffer,
+    participantId: string,
+    speaker: string | null,
+  ): void {
+    const bytes = new Uint8Array(chunk);
+    let binary = '';
+    for (let index = 0; index < bytes.byteLength; index += 1) {
+      binary += String.fromCharCode(bytes[index]);
+    }
+    const base64 = btoa(binary);
+
+    chrome.runtime.sendMessage({
+      type: 'TRACK_AUDIO_CHUNK',
+      sessionId: this.sessionId,
+      participantId,
+      speaker,
+      sampleRate: 16000,
+      channels: 1,
+      chunk: base64,
+    }).catch(() => {
+      // service worker may be inactive momentarily
     });
   }
 
@@ -469,6 +556,23 @@ export class PachcaTrackTranscriber {
   ): void {
     const signal = analyzeChunkSignal(chunk);
     const now = Date.now();
+
+    const lastLevelSentAt = this.lastLevelSentAtByTrackId.get(trackId) ?? 0;
+    if (now - lastLevelSentAt >= AUDIO_LEVEL_SEND_INTERVAL_MS) {
+      this.lastLevelSentAtByTrackId.set(trackId, now);
+      chrome.runtime
+        .sendMessage({
+          type: 'TRACK_AUDIO_LEVEL',
+          participantId,
+          speaker,
+          rms: signal.rms,
+          peak: signal.peak,
+          timestamp: now,
+        })
+        .catch(() => {
+          // service worker may be inactive momentarily
+        });
+    }
 
     const prevVadState = this.vadStateByTrackId.get(trackId);
     const vadDecision = decideVad(prevVadState, signal, now);
@@ -538,26 +642,26 @@ export class PachcaTrackTranscriber {
     }
 
     if (!shouldSend) {
+      this.bufferPreRollChunk(trackId, chunk);
       return;
     }
 
-    const bytes = new Uint8Array(chunk);
-    let binary = '';
-    for (let index = 0; index < bytes.byteLength; index += 1) {
-      binary += String.fromCharCode(bytes[index]);
+    if (vadDecision.opened) {
+      const preRollChunks = this.consumePreRollChunks(trackId);
+      if (preRollChunks.length > 0) {
+        debugLog('sending pre-roll chunks', {
+          trackId,
+          participantId,
+          chunks: preRollChunks.length,
+          bytes: preRollChunks.reduce((total, item) => total + item.byteLength, 0),
+          preRollMs: PRE_ROLL_MS,
+        });
+        preRollChunks.forEach((preRollChunk) => {
+          this.sendPcmChunkToOffscreen(preRollChunk.chunk, participantId, speaker);
+        });
+      }
     }
-    const base64 = btoa(binary);
 
-    chrome.runtime.sendMessage({
-      type: 'TRACK_AUDIO_CHUNK',
-      sessionId: this.sessionId,
-      participantId,
-      speaker,
-      sampleRate: 16000,
-      channels: 1,
-      chunk: base64,
-    }).catch(() => {
-      // service worker may be inactive momentarily
-    });
+    this.sendPcmChunkToOffscreen(chunk, participantId, speaker);
   }
 }

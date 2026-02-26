@@ -7,6 +7,7 @@ import { createClient } from '@deepgram/sdk';
 export class DeepgramSTT implements STTProvider {
   private language: string = 'ru';
   private initialized = false;
+  private reconnectInProgress = false;
 
   private deepgramClient: ReturnType<typeof createClient> | null = null;
   private connection: any = null;
@@ -15,6 +16,8 @@ export class DeepgramSTT implements STTProvider {
   private finalResults: STTResult[] = [];
   private audioBuffer: Buffer[] = [];
   private connectionOpen: boolean = false;
+  private langCode: string = 'en';
+  private static readonly MAX_BUFFERED_CHUNKS = 400;
 
   private getApiKey(): string {
     const apiKey = process.env.DEEPGRAM_API_KEY;
@@ -66,111 +69,14 @@ export class DeepgramSTT implements STTProvider {
     try {
       this.language = language;
       this.onResultCallback = onResult || null;
-      const langCode = this.getLanguageCode(language);
+      this.langCode = this.getLanguageCode(language);
       const apiKey = this.getApiKey();
 
       // console.log(`Initializing Deepgram STT for language: ${langCode}`);
       // console.log(`Deepgram callback ${this.onResultCallback ? 'is set' : 'is NOT set'}`);
 
       this.deepgramClient = createClient(apiKey);
-
-      const connection = this.deepgramClient.listen.live({
-        model: 'nova-2',
-        language: langCode,
-        smart_format: true,
-        punctuate: true,
-        interim_results: true,
-        endpointing: 300,
-        diarize: false,
-        sample_rate: 16000,
-        channels: 1,
-        encoding: 'linear16',
-      });
-      
-      // console.log('Deepgram connection created with config:', {
-      //   model: 'nova-2',
-      //   language: langCode,
-      //   diarize: true,
-      //   sample_rate: 16000,
-      //   channels: 1,
-      //   encoding: 'linear16',
-      // });
-
-      this.connection = connection;
-
-      // Log connection object structure for debugging
-      // console.log('Deepgram connection object keys:', Object.keys(connection));
-      // console.log('Deepgram connection methods:', Object.getOwnPropertyNames(connection).filter(name => typeof (connection as any)[name] === 'function'));
-
-      connection.on('open', () => {
-        // console.log('Deepgram connection opened - ready to receive audio');
-        this.connectionOpen = true;
-      });
-
-      connection.on('error', (_error: Error) => {
-        // console.error('Deepgram connection error:', error);
-        // console.error('Deepgram error details:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
-      });
-
-      connection.on('warning', (_warning: string) => {
-        // console.warn('Deepgram warning:', warning);
-      });
-
-      connection.on('metadata', (_metadata: any) => {
-        // console.log('Deepgram metadata received:', JSON.stringify(metadata, null, 2));
-      });
-
-      const processResults = (data: any) => {
-        try {
-          const payload = typeof data === 'string' ? JSON.parse(data) : data;
-
-          // Deepgram payload shape can differ by SDK/event.
-          // Accept canonical Results and payloads that already contain `channel`.
-          if (!payload || (payload.type && payload.type !== 'Results' && !payload.channel)) {
-            return;
-          }
-
-          const alternative = payload.channel?.alternatives?.[0];
-          const transcript = alternative?.transcript || '';
-          const isFinal = payload.is_final === true;
-          const confidence = alternative?.confidence;
-          const words = alternative?.words || [];
-
-          if (transcript && transcript.trim()) {
-            const defaultResult: STTResult = {
-              text: transcript.trim(),
-              isFinal,
-              confidence,
-              language: langCode,
-            };
-
-            if (isFinal) {
-              this.finalResults.push(defaultResult);
-            } else {
-              this.partialResults.push(defaultResult);
-            }
-
-            if (this.onResultCallback) {
-              this.onResultCallback(defaultResult);
-            }
-          }
-        } catch {
-          // console.error('Error processing Deepgram results:', err);
-        }
-      };
-
-      connection.on('Results', processResults);
-      connection.on('results', processResults);
-      connection.on('transcript', processResults);
-      connection.on('message', (data: any) => {
-        processResults(data);
-      });
-
-      connection.on('close', () => {
-        // console.log('Deepgram connection closed');
-        // console.log(`Total partial results: ${this.partialResults.length}, final results: ${this.finalResults.length}`);
-        this.connectionOpen = false;
-      });
+      this.createConnection();
 
       this.initialized = true;
       // console.log('Deepgram STT initialized successfully');
@@ -180,31 +86,153 @@ export class DeepgramSTT implements STTProvider {
     }
   }
 
+  private createConnection(): void {
+    if (!this.deepgramClient) {
+      throw new Error('Deepgram client is not initialized');
+    }
+
+    const connection = this.deepgramClient.listen.live({
+      model: 'nova-2',
+      language: this.langCode,
+      smart_format: true,
+      punctuate: true,
+      interim_results: true,
+      endpointing: 300,
+      diarize: false,
+      sample_rate: 16000,
+      channels: 1,
+      encoding: 'linear16',
+    });
+
+    this.connection = connection;
+    this.connectionOpen = false;
+
+    connection.on('open', () => {
+      this.connectionOpen = true;
+      this.reconnectInProgress = false;
+      this.flushBufferedAudio();
+    });
+
+    connection.on('error', () => {
+      this.connectionOpen = false;
+    });
+
+    connection.on('warning', () => {
+      // ignore warning
+    });
+
+    connection.on('metadata', () => {
+      // ignore metadata
+    });
+
+    const processResults = (data: any) => {
+      try {
+        const payload = typeof data === 'string' ? JSON.parse(data) : data;
+
+        if (!payload || (payload.type && payload.type !== 'Results' && !payload.channel)) {
+          return;
+        }
+
+        const alternative = payload.channel?.alternatives?.[0];
+        const transcript = alternative?.transcript || '';
+        const isFinal = payload.is_final === true;
+        const confidence = alternative?.confidence;
+
+        if (transcript && transcript.trim()) {
+          const defaultResult: STTResult = {
+            text: transcript.trim(),
+            isFinal,
+            confidence,
+            language: this.langCode,
+          };
+
+          if (isFinal) {
+            this.finalResults.push(defaultResult);
+          } else {
+            this.partialResults.push(defaultResult);
+          }
+
+          if (this.onResultCallback) {
+            this.onResultCallback(defaultResult);
+          }
+        }
+      } catch {
+        // ignore parse/result errors
+      }
+    };
+
+    connection.on('Results', processResults);
+    connection.on('results', processResults);
+    connection.on('transcript', processResults);
+    connection.on('message', (data: any) => {
+      processResults(data);
+    });
+
+    connection.on('close', () => {
+      this.connectionOpen = false;
+    });
+  }
+
+  private flushBufferedAudio(): void {
+    if (!this.connection || !this.connectionOpen || this.audioBuffer.length === 0) {
+      return;
+    }
+
+    const buffered = this.audioBuffer.splice(0, this.audioBuffer.length);
+    for (const chunk of buffered) {
+      try {
+        this.connection.send(new Uint8Array(chunk));
+      } catch {
+        this.audioBuffer.unshift(chunk);
+        break;
+      }
+    }
+  }
+
+  private queueAudioChunk(chunk: Buffer): void {
+    this.audioBuffer.push(chunk);
+    if (this.audioBuffer.length > DeepgramSTT.MAX_BUFFERED_CHUNKS) {
+      this.audioBuffer.splice(0, this.audioBuffer.length - DeepgramSTT.MAX_BUFFERED_CHUNKS);
+    }
+  }
+
+  private tryReconnect(): void {
+    if (!this.initialized || !this.deepgramClient || this.reconnectInProgress) {
+      return;
+    }
+
+    this.reconnectInProgress = true;
+
+    try {
+      this.connection?.finish?.();
+    } catch {
+      // ignore finish errors
+    }
+
+    try {
+      this.createConnection();
+    } catch {
+      this.reconnectInProgress = false;
+    }
+  }
+
   async processAudio(audioBuffer: Buffer, format?: string): Promise<STTResult | null> {
     if (!this.initialized || !this.connection) {
       throw new Error('Deepgram not initialized. Call initialize() first.');
     }
 
+    this.queueAudioChunk(audioBuffer);
+
     if (!this.connectionOpen) {
-      // console.warn('Deepgram connection not yet open, buffering audio chunk');
-      this.audioBuffer.push(audioBuffer);
+      this.tryReconnect();
       return null;
     }
 
     try {
       if (format === 'pcm' || !format) {
-        this.audioBuffer.push(audioBuffer);
-        // console.log(`Deepgram: Sending PCM audio chunk: ${audioBuffer.length} bytes, connection open: ${this.connectionOpen}`);
-        
-        // Send as Uint8Array (Deepgram SDK expects this format)
-        const uint8Array = new Uint8Array(audioBuffer);
-        this.connection.send(uint8Array);
+        this.flushBufferedAudio();
       } else {
-        // console.warn(`Deepgram: Unsupported format ${format}, expected PCM. Converting may be needed.`);
-        this.audioBuffer.push(audioBuffer);
-        // console.log(`Deepgram: Sending audio chunk (${format}): ${audioBuffer.length} bytes`);
-        const uint8Array = new Uint8Array(audioBuffer);
-        this.connection.send(uint8Array);
+        this.flushBufferedAudio();
       }
 
       if (this.onResultCallback) {
@@ -216,7 +244,8 @@ export class DeepgramSTT implements STTProvider {
 
       return latestFinal || latestPartial;
     } catch {
-      // console.error('Deepgram processing error:', err);
+      this.connectionOpen = false;
+      this.tryReconnect();
       return null;
     }
   }
@@ -255,6 +284,7 @@ export class DeepgramSTT implements STTProvider {
     this.finalResults = [];
     this.audioBuffer = [];
     this.connectionOpen = false;
+    this.reconnectInProgress = false;
     this.initialized = false;
     // console.log('Deepgram resources cleaned up');
   }

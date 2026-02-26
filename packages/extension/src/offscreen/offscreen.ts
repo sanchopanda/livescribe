@@ -15,6 +15,99 @@ let mediaStream: MediaStream | null = null;
 let workletNode: AudioWorkletNode | null = null;
 let sourceNode: MediaStreamAudioSourceNode | null = null;
 let wsCloseInitiator: string = 'remote-or-unknown';
+let pendingAudioDurationMs = 0;
+let audioProgressFlushTimer: number | null = null;
+let lastMixedLevelSentAtMs = 0;
+
+const AUDIO_LEVEL_SEND_INTERVAL_MS = 200;
+
+function calculatePcmDurationMs(byteLength: number, sampleRate: number, channels: number): number {
+  if (!Number.isFinite(byteLength) || byteLength <= 0) return 0;
+  if (!Number.isFinite(sampleRate) || sampleRate <= 0) return 0;
+  if (!Number.isFinite(channels) || channels <= 0) return 0;
+
+  const samples = byteLength / 2;
+  return (samples / (sampleRate * channels)) * 1000;
+}
+
+function estimateBase64ByteLength(base64: string): number {
+  if (!base64) return 0;
+  const normalized = base64.trim();
+  if (!normalized) return 0;
+
+  const paddingMatch = normalized.match(/=+$/);
+  const paddingLength = paddingMatch ? paddingMatch[0].length : 0;
+  return Math.max(0, Math.floor((normalized.length * 3) / 4) - paddingLength);
+}
+
+function flushAudioProgress(): void {
+  audioProgressFlushTimer = null;
+
+  if (pendingAudioDurationMs <= 0) return;
+
+  notifyServiceWorker({ type: 'AUDIO_PROGRESS', durationMs: pendingAudioDurationMs });
+  pendingAudioDurationMs = 0;
+}
+
+function queueAudioProgress(durationMs: number): void {
+  if (!Number.isFinite(durationMs) || durationMs <= 0) return;
+
+  pendingAudioDurationMs += durationMs;
+  if (audioProgressFlushTimer !== null) return;
+
+  audioProgressFlushTimer = window.setTimeout(() => {
+    flushAudioProgress();
+  }, 300);
+}
+
+function resetAudioProgress(): void {
+  pendingAudioDurationMs = 0;
+  if (audioProgressFlushTimer !== null) {
+    clearTimeout(audioProgressFlushTimer);
+    audioProgressFlushTimer = null;
+  }
+}
+
+function analyzePcmSignal(buffer: ArrayBuffer): { rms: number; peak: number } {
+  const samples = new Int16Array(buffer);
+  if (samples.length === 0) {
+    return { rms: 0, peak: 0 };
+  }
+
+  let sumSquares = 0;
+  let maxPeak = 0;
+
+  for (let index = 0; index < samples.length; index += 1) {
+    const normalized = samples[index] / 32768;
+    const absValue = Math.abs(normalized);
+    if (absValue > maxPeak) {
+      maxPeak = absValue;
+    }
+    sumSquares += normalized * normalized;
+  }
+
+  return {
+    rms: Math.sqrt(sumSquares / samples.length),
+    peak: maxPeak,
+  };
+}
+
+function maybeSendMixedAudioLevel(buffer: ArrayBuffer): void {
+  const now = Date.now();
+  if (now - lastMixedLevelSentAtMs < AUDIO_LEVEL_SEND_INTERVAL_MS) {
+    return;
+  }
+
+  const signal = analyzePcmSignal(buffer);
+  lastMixedLevelSentAtMs = now;
+
+  notifyServiceWorker({
+    type: 'MIXED_AUDIO_LEVEL',
+    rms: signal.rms,
+    peak: signal.peak,
+    timestamp: now,
+  });
+}
 
 // Connect to WebSocket
 function connect(): Promise<void> {
@@ -103,6 +196,7 @@ function disconnect(reason = 'disconnect-called') {
     ws.close(1000, reason);
     ws = null;
   }
+  resetAudioProgress();
   stopCapture();
 }
 
@@ -181,9 +275,16 @@ async function processStream(stream: MediaStream) {
 
   // Handle audio chunks
   workletNode.port.onmessage = (event) => {
-    if (event.data.type === 'audio-chunk' && sessionId && ws) {
+    if (event.data.type === 'audio-chunk') {
       const chunk = event.data.chunk as ArrayBuffer;
+      maybeSendMixedAudioLevel(chunk);
+
+      if (!sessionId || !ws || ws.readyState !== WebSocket.OPEN) {
+        return;
+      }
+
       const base64 = arrayBufferToBase64(chunk);
+      const durationMs = calculatePcmDurationMs(chunk.byteLength, 16000, 1);
 
       sendMessage({
         type: 'audio',
@@ -192,6 +293,8 @@ async function processStream(stream: MediaStream) {
         channels: 1,
         chunk: base64,
       });
+
+      queueAudioProgress(durationMs);
     }
   };
 
@@ -204,6 +307,9 @@ async function processStream(stream: MediaStream) {
 
 // Stop audio capture
 function stopCapture() {
+  resetAudioProgress();
+  lastMixedLevelSentAtMs = 0;
+
   // Disconnect worklet node first
   if (workletNode) {
     try {
@@ -351,6 +457,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         participantId: message.participantId,
         speaker: message.speaker ?? null,
       } as any);
+
+      const byteLength = estimateBase64ByteLength(message.chunk);
+      const durationMs = calculatePcmDurationMs(
+        byteLength,
+        message.sampleRate || 16000,
+        message.channels || 1,
+      );
+      queueAudioProgress(durationMs);
 
       sendResponse({ success: true });
       return true;

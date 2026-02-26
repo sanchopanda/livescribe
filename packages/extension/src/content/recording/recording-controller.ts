@@ -17,7 +17,6 @@ interface RecordingControllerDeps {
   updateStatus: (status: 'idle' | 'recording' | 'error' | 'waiting', error?: string) => void;
   startSpeakerTracking: () => void;
   stopSpeakerTracking: () => void;
-  clearTranscriptState: () => void;
   trackModeController: TrackModeController;
 }
 
@@ -94,7 +93,6 @@ export class RecordingController {
       console.log('Recording stopped via service worker');
     });
 
-    this.deps.clearTranscriptState();
     this.deps.updateStatus('idle');
   }
 }

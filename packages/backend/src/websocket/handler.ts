@@ -57,6 +57,26 @@ export function registerWebSocketHandler(server: FastifyInstance) {
       }
     };
 
+    const normalizeSpeakerLabel = (value: string | null | undefined): string | undefined => {
+      if (typeof value !== 'string') return undefined;
+      const normalized = value.trim();
+      return normalized.length > 0 ? normalized : undefined;
+    };
+
+    const formatParticipantFallback = (participantId: string): string => {
+      const normalizedId = participantId.replace(/^participant_/i, '').trim();
+      if (!normalizedId) {
+        return 'Participant';
+      }
+
+      const shortId =
+        normalizedId.length > 18
+          ? `${normalizedId.slice(0, 8)}…${normalizedId.slice(-6)}`
+          : normalizedId;
+
+      return `Participant ${shortId}`;
+    };
+
     const destroyParticipantProviders = async () => {
       for (const [, entry] of participantProviders) {
         try {
@@ -165,12 +185,13 @@ export function registerWebSocketHandler(server: FastifyInstance) {
 
             if (participantId) {
               let participantEntry = participantProviders.get(participantId);
+              const normalizedParticipantSpeaker = normalizeSpeakerLabel(participantSpeaker);
 
               if (!participantEntry) {
                 const participantProvider = createSTTProvider(activeProviderType);
                 participantEntry = {
                   provider: participantProvider,
-                  speaker: participantSpeaker ?? null,
+                  speaker: normalizedParticipantSpeaker ?? null,
                 };
 
                 participantProviders.set(participantId, participantEntry);
@@ -187,11 +208,11 @@ export function registerWebSocketHandler(server: FastifyInstance) {
                 );
 
                 await participantProvider.initialize(activeLanguage, (result: any) => {
-                  const resolvedSpeaker = participantEntry?.speaker ?? session.speaker ?? undefined;
+                  const resolvedSpeaker = participantEntry?.speaker ?? formatParticipantFallback(participantId);
                   sendTranscript(result, resolvedSpeaker || undefined);
                 });
-              } else if (participantSpeaker !== undefined) {
-                participantEntry.speaker = participantSpeaker;
+              } else if (normalizedParticipantSpeaker) {
+                participantEntry.speaker = normalizedParticipantSpeaker;
               }
 
               const format = (message as any).format;
@@ -215,7 +236,7 @@ export function registerWebSocketHandler(server: FastifyInstance) {
               const sttResult = await participantEntry.provider.processAudio(audioBuffer, format);
 
               if (sttResult && sttResult.text) {
-                const resolvedSpeaker = participantEntry.speaker ?? session.speaker ?? undefined;
+                const resolvedSpeaker = participantEntry.speaker ?? formatParticipantFallback(participantId);
                 sendTranscript(sttResult, resolvedSpeaker || undefined);
               } else if (count === 1 || count % 100 === 0) {
                 server.log.info(
