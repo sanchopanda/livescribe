@@ -17,6 +17,7 @@ export class DeepgramSTT implements STTProvider {
   private audioBuffer: Buffer[] = [];
   private connectionOpen: boolean = false;
   private langCode: string = 'en';
+  private deepgramModel: string = 'nova-3';
   private static readonly MAX_BUFFERED_CHUNKS = 400;
 
   private getApiKey(): string {
@@ -58,6 +59,11 @@ export class DeepgramSTT implements STTProvider {
     return langMap[lang] || 'en';
   }
 
+  private getModel(): string {
+    const model = process.env.DEEPGRAM_MODEL?.trim();
+    return model || 'nova-3';
+  }
+
   async initialize(language: string, onResult?: STTResultCallback): Promise<void> {
     if (this.initialized && this.language === language) {
       if (onResult) {
@@ -70,6 +76,7 @@ export class DeepgramSTT implements STTProvider {
       this.language = language;
       this.onResultCallback = onResult || null;
       this.langCode = this.getLanguageCode(language);
+      this.deepgramModel = this.getModel();
       const apiKey = this.getApiKey();
 
       // console.log(`Initializing Deepgram STT for language: ${langCode}`);
@@ -92,7 +99,7 @@ export class DeepgramSTT implements STTProvider {
     }
 
     const connection = this.deepgramClient.listen.live({
-      model: 'nova-2',
+      model: this.deepgramModel,
       language: this.langCode,
       smart_format: true,
       punctuate: true,
