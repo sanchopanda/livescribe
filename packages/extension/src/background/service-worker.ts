@@ -5,8 +5,12 @@ import { getPlatformCapabilities, resolveAudioMode } from '../platform/audio-mod
 
 console.log('LiveScribe background service worker initialized');
 
+type RecordingState = 'idle' | 'recording' | 'error';
+type WsState = 'connected' | 'disconnected' | 'error';
+
 // State
-let currentStatus: 'idle' | 'connected' | 'recording' | 'error' = 'idle';
+let recordingState: RecordingState = 'idle';
+let wsState: WsState = 'disconnected';
 let sessionId: string | null = null;
 let offscreenCreated = false;
 let recordingTabId: number | null = null;
@@ -36,11 +40,74 @@ const AUDIO_LEVELS_TTL_MS = 3000;
 const AUDIO_LEVELS_EMA_ALPHA = 0.25;
 const AUDIO_LEVELS_MAX_SPEAKERS = 8;
 
+function getUiStatus(): RecordingState {
+  return recordingState;
+}
+
+function setRecordingState(nextState: RecordingState, reason: string): void {
+  const previousState = recordingState;
+  recordingState = nextState;
+  if (previousState !== nextState) {
+    console.log(`[RecordingState] ${previousState} -> ${nextState}`, { reason });
+  }
+}
+
+function setRecordingActive(reason: string): void {
+  setRecordingState('recording', reason);
+}
+
+function setRecordingIdle(options?: {
+  reason?: string;
+  clearSession?: boolean;
+  pauseMetrics?: boolean;
+  resetLevels?: boolean;
+  broadcastMetrics?: boolean;
+  broadcastLevels?: boolean;
+}): void {
+  const reason = options?.reason || 'setRecordingIdle';
+  if (options?.pauseMetrics !== false) {
+    pauseAudioMetrics();
+  }
+  if (options?.clearSession !== false) {
+    sessionId = null;
+  }
+  if (options?.resetLevels !== false) {
+    resetAudioLevels();
+  }
+  if (options?.broadcastMetrics !== false) {
+    broadcastAudioMetrics();
+  }
+  if (options?.broadcastLevels !== false) {
+    broadcastAudioLevels();
+  }
+  setRecordingState('idle', reason);
+}
+
+function setWsState(nextState: WsState, reason: string): void {
+  const previousState = wsState;
+  wsState = nextState;
+  if (previousState !== nextState) {
+    console.log(`[WsState] ${previousState} -> ${nextState}`, { reason });
+  }
+}
+
+function setWsStateConnected(reason: string): void {
+  setWsState('connected', reason);
+}
+
+function setWsStateDisconnected(reason: string): void {
+  setWsState('disconnected', reason);
+}
+
+function setWsStateError(reason: string): void {
+  setWsState('error', reason);
+}
+
 function resetAudioMetrics(options?: { keepRunning?: boolean }): void {
   const keepRunning = options?.keepRunning === true;
   recordingAccumulatedMs = 0;
   deepgramAudioSentMs = 0;
-  if (keepRunning && currentStatus === 'recording') {
+  if (keepRunning && recordingState === 'recording') {
     recordingSegmentStartedAtMs = Date.now();
   } else {
     recordingSegmentStartedAtMs = null;
@@ -207,7 +274,8 @@ async function recoverPerTrackSession(reason: string): Promise<void> {
     console.warn('Attempting per-track WS/session recovery', {
       reason,
       sessionId,
-      currentStatus,
+      recordingState,
+      wsState,
       recordingTabId,
     });
 
@@ -227,7 +295,8 @@ async function recoverPerTrackSession(reason: string): Promise<void> {
       throw new Error(startResponse.error);
     }
 
-    currentStatus = 'recording';
+    setWsStateConnected('recoverPerTrackSession:session-started');
+    setRecordingActive('recoverPerTrackSession:session-started');
     beginAudioMetrics();
     console.warn('Per-track WS/session recovery completed');
   } catch (err) {
@@ -266,7 +335,7 @@ function startRecordingOffscreen(message: any, sendResponse: (response: any) => 
 
         if (!isActiveStreamError) {
           if (!response.error) {
-            currentStatus = 'recording';
+            setRecordingActive('startRecordingOffscreen:start-capture');
             beginAudioMetrics();
             broadcastAudioMetrics();
           }
@@ -285,7 +354,7 @@ function startRecordingOffscreen(message: any, sendResponse: (response: any) => 
               sendToOffscreen({ type: 'OFFSCREEN_START_CAPTURE', streamId })
                 .then((retryResponse) => {
                   if (!retryResponse.error) {
-                    currentStatus = 'recording';
+                    setRecordingActive('startRecordingOffscreen:retry-start-capture');
                     beginAudioMetrics();
                     broadcastAudioMetrics();
                   }
@@ -322,7 +391,7 @@ function startRecordingOffscreen(message: any, sendResponse: (response: any) => 
 
               setTimeout(() => {
                 if (shouldSkipTabCapture) {
-                  currentStatus = 'recording';
+                  setRecordingActive('startRecordingOffscreen:skip-tab-capture');
                   beginAudioMetrics();
                   broadcastAudioMetrics();
                   sendResponse({ success: true });
@@ -366,7 +435,7 @@ function startRecordingOffscreen(message: any, sendResponse: (response: any) => 
                 .then(() => {
                   setTimeout(() => {
                     if (shouldSkipTabCapture) {
-                      currentStatus = 'recording';
+                      setRecordingActive('startRecordingOffscreen:skip-tab-capture-fallback');
                       beginAudioMetrics();
                       broadcastAudioMetrics();
                       sendResponse({ success: true });
@@ -387,34 +456,26 @@ function startRecordingOffscreen(message: any, sendResponse: (response: any) => 
 
 // Helper function for stopping offscreen recording
 function stopRecordingOffscreen(sendResponse: (response: any) => void, reason = 'unknown') {
-  console.log('stopRecordingOffscreen called', { reason, currentStatus, sessionId, recordingTabId });
+  console.log('stopRecordingOffscreen called', { reason, recordingState, wsState, sessionId, recordingTabId });
 
   sendToOffscreen({ type: 'OFFSCREEN_STOP_SESSION', reason })
     .then(() => {
       return sendToOffscreen({ type: 'OFFSCREEN_DISCONNECT', reason: `stopRecordingOffscreen:${reason}` });
     })
     .then((response) => {
-      currentStatus = 'idle';
-      sessionId = null;
+      setRecordingIdle({ reason: `stopRecordingOffscreen:${reason}` });
+      setWsStateDisconnected(`stopRecordingOffscreen:${reason}`);
       activeRecordingStartMessage = null;
       perTrackRecoveryInProgress = false;
       broadcastWsRecoveryStatus();
-      pauseAudioMetrics();
-      resetAudioLevels();
-      broadcastAudioMetrics();
-      broadcastAudioLevels();
       sendResponse(response);
     })
     .catch((err) => {
-      currentStatus = 'idle';
-      sessionId = null;
+      setRecordingIdle({ reason: `stopRecordingOffscreen:error:${reason}` });
+      setWsStateError(`stopRecordingOffscreen:error:${reason}`);
       activeRecordingStartMessage = null;
       perTrackRecoveryInProgress = false;
       broadcastWsRecoveryStatus();
-      pauseAudioMetrics();
-      resetAudioLevels();
-      broadcastAudioMetrics();
-      broadcastAudioLevels();
       sendResponse({ error: err.message });
     });
 }
@@ -424,25 +485,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Status updates from offscreen document
   if (message.type === 'WS_STATUS') {
     console.log('WebSocket status:', message.status, message.closeInfo || null);
-    const previousStatus = currentStatus;
+    const previousRecordingState = recordingState;
+    const previousWsState = wsState;
     
     if (message.status === 'connected') {
-      if (activeRecordingStartMessage && recordingSegmentStartedAtMs === null) {
+      setWsStateConnected('WS_STATUS:connected');
+      if (recordingState === 'recording' && activeRecordingStartMessage && recordingSegmentStartedAtMs === null) {
         beginAudioMetrics();
       }
-      if (activeRecordingStartMessage && currentStatus === 'idle') {
-        currentStatus = 'recording';
-      }
-      // Don't change status if we're recording - WebSocket can reconnect during recording
-      // Also don't change status during START_RECORDING process
-      if (currentStatus !== 'recording' && currentStatus !== 'idle') {
-        currentStatus = 'idle'; // Keep as idle, not connected (simplified states)
-        sessionId = null;
-      }
     } else if (message.status === 'disconnected') {
-      // If we were recording, stop it first
-      if (currentStatus === 'recording') {
-        if (currentAudioMode === 'per-track') {
+      setWsStateDisconnected(`WS_STATUS:disconnected:${message.closeInfo?.code ?? 'no-code'}`);
+
+      // If we were recording, stop it first unless per-track recovery can restore session.
+      if (recordingState === 'recording') {
+        if (currentAudioMode === 'per-track' && activeRecordingStartMessage) {
+          resetAudioLevels();
+          broadcastAudioLevels();
           recoverPerTrackSession(`ws-disconnected:${message.closeInfo?.code ?? 'no-code'}`).catch(() => {});
           return false;
         }
@@ -456,43 +514,55 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           type: 'OFFSCREEN_STOP_SESSION',
           reason: `ws-disconnected:${message.closeInfo?.code ?? 'no-code'}`,
         }).catch(() => {});
-      }
-      // Only update status if not already idle (to avoid unnecessary updates)
-      if (currentStatus !== 'idle') {
-        currentStatus = 'idle';
-        sessionId = null;
-        pauseAudioMetrics();
-        resetAudioLevels();
-        broadcastAudioMetrics();
-        broadcastAudioLevels();
+
+        setRecordingIdle({
+          reason: `WS_STATUS:disconnected:${message.closeInfo?.code ?? 'no-code'}`,
+        });
       }
     } else if (message.status === 'error') {
-      // Don't change status to error during connection attempt
-      // Only change if we were actually connected/recording before
-      if (currentStatus === 'recording') {
+      setWsStateError('WS_STATUS:error');
+
+      // Only stop recording for active sessions.
+      if (recordingState === 'recording') {
         sendToOffscreen({ type: 'OFFSCREEN_STOP_SESSION' }).catch(() => {});
-        currentStatus = 'idle';
-        sessionId = null;
-        pauseAudioMetrics();
-        resetAudioLevels();
-        broadcastAudioMetrics();
-        broadcastAudioLevels();
+        setRecordingIdle({ reason: 'WS_STATUS:error' });
       }
-      // If status is already idle, don't change it (connection attempt failed, but we're already idle)
     }
     
-    // Only log if status actually changed
-    if (previousStatus !== currentStatus) {
-      console.log(`Status changed: ${previousStatus} -> ${currentStatus}`);
+    if (previousRecordingState !== recordingState || previousWsState !== wsState) {
+      console.log('State snapshot after WS_STATUS', {
+        previousRecordingState,
+        recordingState,
+        previousWsState,
+        wsState,
+      });
     }
     return false;
   }
 
   if (message.type === 'WS_MESSAGE') {
     const wsMessage = message.message;
-    if (wsMessage.type === 'status' && wsMessage.sessionId) {
-      sessionId = wsMessage.sessionId;
-      currentStatus = wsMessage.status;
+    if (wsMessage.type === 'status') {
+      if (wsMessage.sessionId) {
+        sessionId = wsMessage.sessionId;
+      }
+
+      if (wsMessage.status === 'connected') {
+        setWsStateConnected('WS_MESSAGE:status=connected');
+      } else if (wsMessage.status === 'recording') {
+        setWsStateConnected('WS_MESSAGE:status=recording');
+        setRecordingActive('WS_MESSAGE:status=recording');
+      } else if (wsMessage.status === 'idle') {
+        if (!activeRecordingStartMessage) {
+          setRecordingIdle({ reason: 'WS_MESSAGE:status=idle' });
+          setWsStateDisconnected('WS_MESSAGE:status=idle');
+        } else {
+          console.warn('Ignoring WS idle status while active recording start is present', {
+            sessionId: wsMessage.sessionId ?? sessionId,
+            audioMode: currentAudioMode,
+          });
+        }
+      }
     }
 
     // Forward websocket messages to the tab where recording was started.
@@ -520,7 +590,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'MIXED_AUDIO_LEVEL') {
-    if (currentStatus !== 'recording' || currentAudioMode !== 'mixed') {
+    if (recordingState !== 'recording' || currentAudioMode !== 'mixed') {
       return false;
     }
 
@@ -546,7 +616,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'TRACK_AUDIO_LEVEL') {
-    if (currentStatus !== 'recording' || currentAudioMode !== 'per-track') {
+    if (recordingState !== 'recording' || currentAudioMode !== 'per-track') {
       return false;
     }
 
@@ -587,15 +657,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'CAPTURE_STATUS') {
     console.log('Capture status:', message.status);
     if (message.status === 'recording') {
-      currentStatus = 'recording';
+      setRecordingActive('CAPTURE_STATUS:recording');
     } else if (message.status === 'stopped') {
       // Only update to idle if we were recording
-      if (currentStatus === 'recording') {
-        currentStatus = 'idle';
-        pauseAudioMetrics();
-        resetAudioLevels();
-        broadcastAudioMetrics();
-        broadcastAudioLevels();
+      if (recordingState === 'recording') {
+        setRecordingIdle({ reason: 'CAPTURE_STATUS:stopped' });
       }
     }
     return false;
@@ -627,7 +693,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     broadcastAudioLevels();
 
     // Check if we are really recording or just have stale state.
-    if (currentStatus === 'recording') {
+    if (recordingState === 'recording') {
       sendToOffscreen({ type: 'OFFSCREEN_GET_STATUS' })
         .then((offscreenStatus) => {
           if (offscreenStatus?.capturing) {
@@ -636,14 +702,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           }
 
           // Stale state: allow fresh start
-          currentStatus = 'idle';
-          sessionId = null;
+          setRecordingIdle({
+            reason: 'START_RECORDING:stale-state-contention',
+            pauseMetrics: false,
+            resetLevels: false,
+            broadcastMetrics: false,
+            broadcastLevels: false,
+          });
           startRecordingOffscreen(message, sendResponse);
         })
         .catch(() => {
           // If status check fails, try to recover by attempting a fresh start
-          currentStatus = 'idle';
-          sessionId = null;
+          setRecordingIdle({
+            reason: 'START_RECORDING:stale-state-contention-catch',
+            pauseMetrics: false,
+            resetLevels: false,
+            broadcastMetrics: false,
+            broadcastLevels: false,
+          });
           startRecordingOffscreen(message, sendResponse);
         });
       return true;
@@ -698,7 +774,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       senderTabId: sender.tab?.id ?? null,
       recordingTabId,
       sessionId,
-      currentStatus,
+      recordingState,
+      wsState,
     });
     recordingTabId = null;
     activeRecordingStartMessage = null;
@@ -720,10 +797,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         chrome.tabs.sendMessage(tabs[0].id, { type: 'CONTENT_GET_STATUS' }, (response) => {
           if (!chrome.runtime.lastError && response) {
             // Content script responded
-            currentStatus = response.status === 'recording' ? 'recording' : 'idle';
+            if (response.status === 'recording') {
+              setRecordingActive('GET_STATUS:content-response');
+            } else if (response.status === 'error') {
+              setRecordingState('error', 'GET_STATUS:content-response');
+            } else {
+              setRecordingIdle({
+                reason: 'GET_STATUS:content-response',
+                pauseMetrics: false,
+                resetLevels: false,
+                broadcastMetrics: false,
+                broadcastLevels: false,
+              });
+            }
             sessionId = response.sessionId || null;
             sendResponse({
-              status: currentStatus,
+              status: getUiStatus(),
               sessionId,
               wsRecovering: perTrackRecoveryInProgress,
               ...getAudioMetricsSnapshot(),
@@ -734,22 +823,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           // Fallback to offscreen
           sendToOffscreen({ type: 'OFFSCREEN_GET_STATUS' })
             .then((offscreenStatus) => {
-              if (offscreenStatus && !offscreenStatus.wsConnected && currentStatus === 'connected') {
-                console.log('WebSocket not connected but status is connected, fixing...');
-                currentStatus = 'idle';
-                sessionId = null;
+              if (offscreenStatus && !offscreenStatus.wsConnected && wsState === 'connected') {
+                console.log('WebSocket not connected but wsState is connected, fixing...');
+                setWsStateDisconnected('GET_STATUS:offscreen-fallback');
               }
               sendResponse({
-                status: currentStatus,
+                status: getUiStatus(),
                 sessionId,
                 wsRecovering: perTrackRecoveryInProgress,
                 ...getAudioMetricsSnapshot(),
               });
             })
             .catch(() => {
-              console.log('Could not reach offscreen, returning current status:', currentStatus);
+              console.log('Could not reach offscreen, returning current status:', getUiStatus());
               sendResponse({
-                status: currentStatus,
+                status: getUiStatus(),
                 sessionId,
                 wsRecovering: perTrackRecoveryInProgress,
                 ...getAudioMetricsSnapshot(),
@@ -760,12 +848,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // No active tab, use offscreen
         sendToOffscreen({ type: 'OFFSCREEN_GET_STATUS' })
           .then((offscreenStatus) => {
-            if (offscreenStatus && !offscreenStatus.wsConnected && currentStatus === 'connected') {
-              currentStatus = 'idle';
-              sessionId = null;
+            if (offscreenStatus && !offscreenStatus.wsConnected && wsState === 'connected') {
+              setWsStateDisconnected('GET_STATUS:no-active-tab');
             }
             sendResponse({
-              status: currentStatus,
+              status: getUiStatus(),
               sessionId,
               wsRecovering: perTrackRecoveryInProgress,
               ...getAudioMetricsSnapshot(),
@@ -773,7 +860,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           })
           .catch(() => {
             sendResponse({
-              status: currentStatus,
+              status: getUiStatus(),
               sessionId,
               wsRecovering: perTrackRecoveryInProgress,
               ...getAudioMetricsSnapshot(),
@@ -805,7 +892,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === 'CONTENT_STATUS_UPDATE') {
     // Status update from content script
-    currentStatus = message.status;
+    if (message.status === 'recording') {
+      setRecordingActive('CONTENT_STATUS_UPDATE');
+    } else if (message.status === 'error') {
+      setRecordingState('error', 'CONTENT_STATUS_UPDATE');
+    } else {
+      setRecordingIdle({
+        reason: 'CONTENT_STATUS_UPDATE',
+        pauseMetrics: false,
+        resetLevels: false,
+        broadcastMetrics: false,
+        broadcastLevels: false,
+      });
+    }
     if (message.sessionId) {
       sessionId = message.sessionId;
     }
@@ -829,15 +928,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'DISCONNECT') {
     sendToOffscreen({ type: 'OFFSCREEN_DISCONNECT' })
       .then((response) => {
-        currentStatus = 'idle';
-        sessionId = null;
+        setRecordingIdle({ reason: 'DISCONNECT' });
+        setWsStateDisconnected('DISCONNECT');
         activeRecordingStartMessage = null;
         perTrackRecoveryInProgress = false;
         broadcastWsRecoveryStatus();
-        pauseAudioMetrics();
-        resetAudioLevels();
-        broadcastAudioMetrics();
-        broadcastAudioLevels();
         sendResponse(response);
       })
       .catch((err) => sendResponse({ error: err.message }));
