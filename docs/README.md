@@ -15,6 +15,8 @@
 
 - [`decisions/`](decisions/) — ADR (`NNNN-<decision>.md`).
   - [`0001-stt-deepgram-only.md`](decisions/0001-stt-deepgram-only.md)
+  - `0002` — зарезервирован под хостинг бэкенда (LS-06).
+  - [`0003-monorepo-layout-single-port.md`](decisions/0003-monorepo-layout-single-port.md)
 - [`specs/`](specs/) — спеки фич (`NN-<feature>.md`).
 - [`superpowers/specs/`](superpowers/specs/), [`superpowers/plans/`](superpowers/plans/) —
   дизайн-спеки и планы реализации (навыки brainstorming / writing-plans).
