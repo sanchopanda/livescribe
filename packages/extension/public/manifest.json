@@ -25,6 +25,15 @@
     },
     {
       "matches": [
+        "https://meet.google.com/*"
+      ],
+      "js": ["src/content/platforms/meet/audio/per-track/webrtc-tracks-main.js"],
+      "run_at": "document_start",
+      "all_frames": false,
+      "world": "MAIN"
+    },
+    {
+      "matches": [
         "https://meet.google.com/*",
         "https://zoom.us/*",
         "https://*.zoom.us/*",

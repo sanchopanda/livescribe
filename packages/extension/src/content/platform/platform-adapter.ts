@@ -5,12 +5,17 @@ import {
 } from '../../platform/audio-mode-capabilities';
 import { getPachcaActiveSpeaker } from '../platforms/pachca/speaker/active-speaker-dom';
 import { getTeamsActiveSpeaker } from '../platforms/teams/speaker/active-speaker-dom';
+import { getMeetActiveSpeaker } from '../platforms/meet/speaker/active-speaker-dom';
 import {
   getPachcaAudioMode,
   setPachcaAudioMode,
-  type PachcaAudioMode,
 } from '../platforms/pachca/config/audio-mode';
+import {
+  getMeetAudioMode,
+  setMeetAudioMode,
+} from '../platforms/meet/config/audio-mode';
 import { PachcaTrackModeController } from '../platforms/pachca/recording/track-mode-controller';
+import { MeetTrackModeController } from '../platforms/meet/recording/track-mode-controller';
 
 interface TrackModeController {
   ensureStarted: (reason: string) => void;
@@ -28,7 +33,7 @@ interface ActiveSpeakerInfo {
   speaker: string | null;
 }
 
-export type AudioMode = PachcaAudioMode;
+export type AudioMode = 'per-track' | 'mixed';
 
 export interface PlatformAdapter {
   getPlatform: () => PlatformForStart;
@@ -48,26 +53,42 @@ const noOpTrackModeController: TrackModeController = {
 const speakerDetectors: Partial<Record<Exclude<PlatformForStart, undefined>, () => ActiveSpeakerInfo | null>> = {
   pachca: getPachcaActiveSpeaker,
   teams: getTeamsActiveSpeaker,
+  meet: getMeetActiveSpeaker,
 };
 
 export function createPlatformAdapter(params: PlatformAdapterParams): PlatformAdapter {
   const platform = getPlatformForStartMessage();
   const capabilities = getPlatformCapabilities(platform);
 
-  const trackModeController = platform === 'pachca'
-    ? new PachcaTrackModeController({
+  const trackModeController = (() => {
+    if (platform === 'pachca') {
+      return new PachcaTrackModeController({
         getIsCapturing: params.getIsCapturing,
         getSessionId: params.getSessionId,
-      })
-    : null;
+      });
+    }
+    if (platform === 'meet') {
+      return new MeetTrackModeController({
+        getIsCapturing: params.getIsCapturing,
+        getSessionId: params.getSessionId,
+      });
+    }
+    return null;
+  })();
 
   return {
     getPlatform: () => platform,
     supportsAudioModeSelection: () => capabilities.supportsPerTrackAudioMode,
-    getAudioMode: () => (supportsPerTrackAudioMode(platform) ? getPachcaAudioMode() : 'mixed'),
+    getAudioMode: (): AudioMode => {
+      if (!supportsPerTrackAudioMode(platform)) return 'mixed';
+      if (platform === 'pachca') return getPachcaAudioMode();
+      if (platform === 'meet') return getMeetAudioMode();
+      return 'mixed';
+    },
     setAudioMode: (mode) => {
       if (!supportsPerTrackAudioMode(platform)) return;
-      setPachcaAudioMode(mode);
+      if (platform === 'pachca') setPachcaAudioMode(mode);
+      if (platform === 'meet') setMeetAudioMode(mode);
     },
     getActiveSpeaker: () => {
       if (!platform || !capabilities.supportsSpeakerDomDetection) {

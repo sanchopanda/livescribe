@@ -630,9 +630,9 @@ function createUIWidget() {
         background: white;
         cursor: pointer;
         display: ${platformAdapter.supportsAudioModeSelection() ? 'block' : 'none'};
-      " title="Pachca audio mode (applies on next start)">
-        <option value="per-track" ${selectedAudioMode === 'per-track' ? 'selected' : ''}>Pachca: Per-track</option>
-        <option value="mixed" ${selectedAudioMode === 'mixed' ? 'selected' : ''}>Pachca: Mixed</option>
+      " title="Audio mode (applies on next start)">
+        <option value="per-track" ${selectedAudioMode === 'per-track' ? 'selected' : ''}>Per-track</option>
+        <option value="mixed" ${selectedAudioMode === 'mixed' ? 'selected' : ''}>Mixed</option>
       </select>
       <div style="display: flex; gap: 8px; margin-bottom: 8px;">
         <button id="livescribe-start" style="

@@ -18,9 +18,9 @@ const DEFAULT_PLATFORM_CAPABILITIES: PlatformCapabilities = {
 
 const PLATFORM_CAPABILITIES: Record<Exclude<PlatformForStart, undefined>, PlatformCapabilities> = {
   meet: {
-    supportsPerTrackAudioMode: false,
-    supportsSpeakerDomDetection: false,
-    supportsMainWorldWebRTCHook: false,
+    supportsPerTrackAudioMode: true,
+    supportsSpeakerDomDetection: true,
+    supportsMainWorldWebRTCHook: true,
     supportsMixedCapture: true,
   },
   zoom: {

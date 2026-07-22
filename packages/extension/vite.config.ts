@@ -24,6 +24,10 @@ export default defineConfig({
           __dirname,
           'src/content/platforms/pachca/audio/per-track/webrtc-tracks-main.ts',
         ),
+        'meet-webrtc-tracks-main': path.resolve(
+          __dirname,
+          'src/content/platforms/meet/audio/per-track/webrtc-tracks-main.ts',
+        ),
       },
       output: {
         entryFileNames: (chunkInfo) => {
@@ -38,6 +42,9 @@ export default defineConfig({
           }
           if (chunkInfo.name === 'pachca-webrtc-tracks-main') {
             return 'src/content/platforms/pachca/audio/per-track/webrtc-tracks-main.js';
+          }
+          if (chunkInfo.name === 'meet-webrtc-tracks-main') {
+            return 'src/content/platforms/meet/audio/per-track/webrtc-tracks-main.js';
           }
           return 'assets/[name]-[hash].js';
         },
