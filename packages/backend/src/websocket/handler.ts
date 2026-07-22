@@ -2,14 +2,15 @@ import type { FastifyInstance } from 'fastify';
 import type { ClientMessage, ServerMessage } from '@livescribe/shared';
 import { SessionManager } from './session.js';
 import { createSTTProvider } from '../stt/index.js';
+import type { STTProviderType } from '../stt/index.js';
 
 const sessionManager = new SessionManager();
 let wsConnectionSequence = 0;
 
 // Get STT provider type - read from env at runtime, not at module load
 // This ensures dotenv.config() has been called first
-function getSTTProviderType(): 'vosk' | 'deepgram' | 'whisper' {
-  return (process.env.STT_PROVIDER as 'vosk' | 'deepgram' | 'whisper') || 'vosk';
+function getSTTProviderType(): STTProviderType {
+  return (process.env.STT_PROVIDER as STTProviderType) || 'deepgram';
 }
 
 export function registerWebSocketHandler(server: FastifyInstance) {
@@ -18,7 +19,7 @@ export function registerWebSocketHandler(server: FastifyInstance) {
     const conn = `ws#${connectionId}`;
     let sessionId: string | null = null;
     let activeLanguage: 'ru-RU' | 'en-US' = 'ru-RU';
-    let activeProviderType: 'vosk' | 'deepgram' | 'whisper' = getSTTProviderType();
+    let activeProviderType: STTProviderType = getSTTProviderType();
     type ParticipantProviderEntry = {
       provider: any;
       speaker: string | null;

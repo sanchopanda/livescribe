@@ -67,7 +67,7 @@ export class SessionManager {
       // Save audio to WAV file if we have chunks
       if (session.audioChunks.length > 0) {
         try {
-          const wavFile = this.saveAudioToWav(sessionId, session.audioChunks);
+          this.saveAudioToWav(sessionId, session.audioChunks);
           // console.log(`Audio saved to: ${wavFile}`);
         } catch {
           // console.error(`Failed to save audio for session ${sessionId}:`, err);

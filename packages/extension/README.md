@@ -75,4 +75,4 @@ npm run build:extension
 ### No transcript but levels are moving
 
 - Check backend/WebSocket status in widget (`WS recovering...`).
-- Verify backend is running and `STT_PROVIDER` is configured.
+- Verify backend is running and `DEEPGRAM_API_KEY` is configured.

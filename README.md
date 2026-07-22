@@ -12,7 +12,7 @@ Monorepo structure with npm workspaces:
 ### Platform-aware audio modes
 
 - `mixed` mode: capture full tab audio via `chrome.tabCapture`.
-- `per-track` mode: capture separate participant WebRTC tracks (currently Pachca).
+- `per-track` mode: capture separate participant WebRTC tracks (Pachca, Google Meet).
 
 Mode availability is capability-driven per platform in
 `packages/extension/src/platform/audio-mode-capabilities.ts`.
@@ -87,9 +87,9 @@ Current phase: **MVP+ - Platform-aware capture + resilient streaming**
 - ✅ Monorepo structure
 - 🔄 WebSocket communication + recovery
 - 🔄 Audio capture (`mixed` + `per-track`)
-- ✅ STT integration (Deepgram + Vosk)
-- ✅ Pachca per-track mode
-- 🔄 Capability-based scaling (Meet/Zoom/Teams mixed mode)
+- ✅ STT integration (Deepgram)
+- ✅ Pachca + Google Meet per-track mode
+- 🔄 Capability-based scaling (Zoom/Teams mixed mode)
 
 ## License
 

@@ -6,9 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 LiveScribe is a Chrome extension for real-time transcription of video calls (Google Meet, Zoom, MS Teams, Pachca). It supports platform-aware audio pipelines:
 - **mixed** mode: classic tab audio capture via `chrome.tabCapture`
-- **per-track** mode: per-participant WebRTC track capture (currently implemented for Pachca)
+- **per-track** mode: per-participant WebRTC track capture (implemented for Pachca and Google Meet)
 
-Audio is streamed over WebSocket to backend STT providers and rendered in-page in real time.
+Audio is streamed over WebSocket to the Deepgram STT backend and rendered in-page in real time.
 
 ## Commands
 
@@ -22,7 +22,6 @@ npm run dev
 # Run individually
 npm run dev:backend    # Backend on ws://localhost:3001
 npm run dev:extension  # Extension build in watch mode
-npm run dev:stt        # Python STT service on http://localhost:3002
 
 # Build all packages
 npm run build
@@ -34,19 +33,6 @@ npm run type-check
 npm run lint
 ```
 
-### Python STT Service Setup
-
-```bash
-cd packages/stt-service
-pip install -r requirements.txt
-
-# Download Vosk models (see packages/stt-service/README.md)
-# Then run:
-python main.py
-# or
-uvicorn main:app --host 0.0.0.0 --port 3002
-```
-
 ### Loading the Extension in Chrome
 1. Build: `npm run build:extension`
 2. Navigate to `chrome://extensions`
@@ -55,7 +41,7 @@ uvicorn main:app --host 0.0.0.0 --port 3002
 
 ## Architecture
 
-Monorepo using npm workspaces with four packages:
+Monorepo using npm workspaces with three packages:
 
 ### packages/shared
 TypeScript types shared between frontend and backend:
@@ -73,7 +59,7 @@ Chrome Extension (Manifest V3) built with Vite + React + TypeScript:
 
 Audio capture flow depends on platform/mode:
 - **mixed**: `chrome.tabCapture` → AudioContext → AudioWorklet → PCM Int16 → base64 → WebSocket
-- **per-track (Pachca)**: MAIN-world WebRTC hook → track registry → per-track AudioWorklet capture → PCM Int16 → base64 → WebSocket
+- **per-track (Pachca, Meet)**: MAIN-world WebRTC hook → track registry → per-track AudioWorklet capture → PCM Int16 → base64 → WebSocket
 
 **Content Scripts:** Currently limited to specific domains (Google Meet, Zoom, Teams, YouTube).
 TODO: Update `public/manifest.json` matches list when adding support for new video platforms.
@@ -83,13 +69,7 @@ Node.js WebSocket server using Fastify:
 - `src/server.ts` - Fastify server setup with CORS and WebSocket plugin
 - `src/websocket/handler.ts` - WebSocket message routing (start/audio/stop)
 - `src/websocket/session.ts` - Session management and audio chunk logging
-- `src/stt/` - STT provider interface and implementations (Deepgram, Vosk HTTP, Whisper placeholder)
-
-### packages/stt-service
-Python microservice for Vosk speech recognition:
-- `main.py` - FastAPI service with Vosk integration
-- Communicates with Node.js backend via HTTP API
-- Handles model initialization, audio processing, and transcription
+- `src/stt/` - STT provider interface and Deepgram streaming implementation
 
 ## WebSocket Protocol
 
@@ -109,9 +89,7 @@ Endpoint: `ws://localhost:3001/ws`
 ## Current Status
 
 MVP+: Audio capture + WebSocket streaming is implemented, including platform-aware audio mode selection. STT integration:
-- **Deepgram (Cloud)**: ✅ Implemented (streaming)
-- **Vosk (Python)**: ✅ Implemented via HTTP microservice (`packages/stt-service/`)
-- **Whisper (Node.js)**: ⚠️ Placeholder (requires @xenova/transformers update)
+- **Deepgram (Cloud)**: ✅ Implemented (streaming) — the only supported STT provider
 
 Notes on speaker labeling:
 - DOM speaker names (e.g. Pachca participant names) are still used as the primary user-visible names.
@@ -119,7 +97,7 @@ Notes on speaker labeling:
 - Experimental WebRTC and Deepgram diarization logic is archived in `docs/SPEAKER_DETECTION_ARCHIVE.md` for future restoration.
 
 Platform audio modes:
-- **Pachca**: `mixed` + `per-track` (switchable in widget)
-- **Teams/Meet/Zoom**: `mixed` only for now (capability-gated in UI/runtime)
+- **Pachca, Meet**: `mixed` + `per-track` (switchable in widget)
+- **Teams/Zoom**: `mixed` only for now (capability-gated in UI/runtime)
 
-Set `STT_PROVIDER=deepgram` or `STT_PROVIDER=vosk` in backend `.env` to choose provider.
+STT is Deepgram-only. Set `DEEPGRAM_API_KEY` in backend `.env` (see `packages/backend/.env.example`).

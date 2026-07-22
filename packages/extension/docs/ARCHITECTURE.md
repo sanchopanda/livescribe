@@ -31,7 +31,7 @@ LiveScribe - это Chrome расширение, которое:
 
 Режимы аудио:
 - **mixed** — захват общего аудио вкладки (`chrome.tabCapture`)
-- **per-track** — захват отдельных WebRTC аудиотреков участников (реализован для Pachca)
+- **per-track** — захват отдельных WebRTC аудиотреков участников (реализован для Pachca и Google Meet)
 
 Показ переключателя режима в UI и runtime-решения теперь capability-driven.
 
@@ -124,7 +124,7 @@ LiveScribe - это Chrome расширение, которое:
    Воспроизведение                           Обработка
  (пользователь слышит)              (конвертация в PCM)
 
-10. В per-track режиме (Pachca) используется отдельный пайплайн:
+10. В per-track режиме (Pachca, Google Meet) используется отдельный пайплайн:
     - MAIN-world hook регистрирует remote WebRTC audio tracks
     - per-track transcriber захватывает каждый трек через AudioWorklet
     - чанки отправляются participant-aware (`participantId`, `speaker`)
@@ -165,7 +165,7 @@ sourceNode.connect(workletNode);
 ### Шаг 5: Получение транскрипций
 
 ```
-12. Бэкенд распознаёт речь (через Deepgram/Vosk)
+12. Бэкенд распознаёт речь (через Deepgram)
 13. Бэкенд отправляет обратно по WebSocket:
 
     Частичные результаты (каждую секунду):
@@ -226,7 +226,7 @@ sourceNode.connect(workletNode);
 │  ┌─────────────────────────────────────┼──────────────┐   │
 │  │          WebSocket Handler          ↓              │   │
 │  │  1. Receive audio chunks                           │   │
-│  │  2. Send to STT provider (Deepgram/Vosk)          │   │
+│  │  2. Send to STT provider (Deepgram)               │   │
 │  │  3. Get transcripts                                │   │
 │  │  4. Send back: { type: "partial", text: "..." }   │   │
 │  └────────────────────────────────────┬───────────────┘   │
@@ -301,7 +301,7 @@ audioElement.play();
 - **Входной формат:** Float32Array (от Chrome)
 - **AudioWorklet конвертирует в:** Int16 PCM, 16000 Hz, Mono
 - **Отправка:** Base64 encoded chunks по 8KB
-- **На бэкенде:** Декодируется и отправляется в STT (Deepgram/Vosk)
+- **На бэкенде:** Декодируется и отправляется в STT (Deepgram)
 
 ### Обработка ошибок
 

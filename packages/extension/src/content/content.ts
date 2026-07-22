@@ -428,7 +428,7 @@ recordingController = new RecordingController({
   trackModeController,
 });
 
-// Language options (currently supported by Vosk STT)
+// Language options (currently supported by Deepgram STT)
 const LANGUAGES = [
   { value: 'ru-RU', label: 'Russian' },
   { value: 'en-US', label: 'English' },
