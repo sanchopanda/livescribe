@@ -101,3 +101,38 @@ Platform audio modes:
 - **Teams/Zoom**: `mixed` only for now (capability-gated in UI/runtime)
 
 STT is Deepgram-only. Set `DEEPGRAM_API_KEY` in backend `.env` (see `packages/backend/.env.example`).
+
+## Development Flow
+
+Задачи, документация и релизы ведутся локально в репозитории. Подробные правила — в
+[`docs/CONVENTIONS.md`](docs/CONVENTIONS.md).
+
+### Принципы
+
+1. **Дизайн до кода.** Новая фича проходит brainstorming → спека в `docs/superpowers/specs/`
+   (или `docs/specs/NN-<feature>.md`) → согласование → реализация.
+2. **Доки = зеркало реальности.** На каждой логической точке (завершённая задача, конец
+   сессии) — прежде чем браться за новое — привести в актуальное состояние
+   `docs/backlog.md` и `docs/PROGRESS.md`, а при изменении архитектуры/правил —
+   `docs/KNOWLEDGE.md` и спеку/ADR. Истина статуса задачи = состояние git (коммит в `main`).
+3. **Ответ до действия.** Сначала ответ по существу, потом предложение что-то сделать.
+
+### Где что лежит
+
+- [`docs/backlog.md`](docs/backlog.md) — задачи (`LS-NN`) по фазам.
+- [`docs/PROGRESS.md`](docs/PROGRESS.md) — курсор: сделано / следующее / в работе / блокеры.
+- [`docs/KNOWLEDGE.md`](docs/KNOWLEDGE.md) — живые заметки (глоссарий, грабли).
+- [`docs/decisions/`](docs/decisions/) — ADR; [`docs/specs/`](docs/specs/) — спеки фич.
+- [`CHANGELOG.md`](CHANGELOG.md) — релиз-ноуты (Keep a Changelog).
+
+### Скиллы (`.claude/skills/`)
+
+- **`proceed`** — оркестратор: одна задача из бэклога через цикл реализация → тест →
+  ревью → коммит. Триггеры: «продолжай / дальше / поехали / continue», `/proceed`.
+- **`implement-task`** — реализация по стек-правилам livescribe (делегирует TDD).
+- **`test-task`** — проверка: `type-check` + `build` + прогон поведения; вердикт PASS/FAIL.
+- **`review-task`** — ревью диффа (`/code-review` + чек-лист правил репо).
+- **`release`** — выпуск: `CHANGELOG` + тег `vX.Y.Z` + GitHub Release. Релиз ≠ деплой.
+
+Коммитить/пушить — только когда попросил пользователь; коммит **прямо в `main`** (практика
+репо), ветка — только для изоляции. Секреты/`.env`/`dist` не коммитить.
