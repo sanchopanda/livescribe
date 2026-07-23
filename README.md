@@ -1,6 +1,10 @@
-# LiveScribe
+# Skribo
 
 Real-time transcription for video calls (Google Meet, Zoom, MS Teams, Pachca).
+
+> Продукт переименован из «LiveScribe» в **Skribo** (см. `docs/decisions/0004-product-name-skribo.md`).
+> Идентификаторы пакетов `@livescribe/*` временно сохранены — переименование в `@skribo/*`
+> запланировано отдельной задачей LS-10.
 
 ## Architecture
 

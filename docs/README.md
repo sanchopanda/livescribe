@@ -17,6 +17,7 @@
   - [`0001-stt-deepgram-only.md`](decisions/0001-stt-deepgram-only.md)
   - [`0002-backend-hosting.md`](decisions/0002-backend-hosting.md)
   - [`0003-monorepo-layout-single-port.md`](decisions/0003-monorepo-layout-single-port.md)
+  - [`0004-product-name-skribo.md`](decisions/0004-product-name-skribo.md)
 - [`specs/`](specs/) — спеки фич (`NN-<feature>.md`).
 - [`superpowers/specs/`](superpowers/specs/), [`superpowers/plans/`](superpowers/plans/) —
   дизайн-спеки и планы реализации (навыки brainstorming / writing-plans).
