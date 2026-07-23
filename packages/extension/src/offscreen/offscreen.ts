@@ -3,9 +3,11 @@
 
 import type { ClientMessage, ServerMessage } from '@livescribe/shared';
 
-console.log('LiveScribe offscreen document initialized');
+console.log('Skribo offscreen document initialized');
 
-const WS_URL = 'ws://localhost:3001/ws';
+// Injected at build time via Vite `define` (see vite.config.ts).
+declare const __WS_URL__: string;
+const WS_URL = __WS_URL__;
 
 // State
 let ws: WebSocket | null = null;

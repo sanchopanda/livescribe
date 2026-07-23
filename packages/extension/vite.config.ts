@@ -4,7 +4,14 @@ import { crx } from '@crxjs/vite-plugin';
 import manifest from './public/manifest.json';
 import path from 'path';
 
+// Backend WebSocket URL is baked in at build time.
+// Dev (default): ws://localhost:3001/ws. Prod: WS_URL=wss://api.skribo.ru/ws npm run build:extension
+const WS_URL = process.env.WS_URL || 'ws://localhost:3001/ws';
+
 export default defineConfig({
+  define: {
+    __WS_URL__: JSON.stringify(WS_URL),
+  },
   plugins: [react(), crx({ manifest: manifest as any })],
   resolve: {
     alias: {
