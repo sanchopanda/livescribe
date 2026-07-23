@@ -18,12 +18,12 @@
 
 ## Задача в работе
 
-- **LS-06 — Хостинг бэкенда.** Решения зафиксированы: ADR-0002 (отдельная ВМ Yandex Cloud,
-  Caddy TLS/wss, systemd), домены — `api.skribo.ru` (сейчас) + `skribo.io` (бренд позже).
-  Продукт переименован в **Skribo** (ADR-0004).
+- **LS-06 — Хостинг бэкенда.** Решения зафиксированы: ADR-0002 (**AdminVPS**, Москва,
+  Caddy TLS/wss, systemd, Postgres на ВМ), домены — `api.skribo.ru` (сейчас) + `skribo.io`
+  (бренд позже). Продукт переименован в **Skribo** (ADR-0004).
   - ✅ Код-подготовка: WS-URL расширения вынесен в build-time конфиг (Vite `define`
     `__WS_URL__`); прод-сборка `WS_URL=wss://api.skribo.ru/ws` проверена.
-  - ⏳ Ждём от владельца: регистрацию `skribo.ru` и создание ВМ (IP + ssh).
+  - ⏳ Ждём от владельца: регистрацию `skribo.ru` и создание VPS на AdminVPS (IP + ssh).
   - ⏳ Дальше: `deploy`-скилл, Caddy/systemd, сужение CORS, пост-проверка `wss`.
 
 ## Блокеры
