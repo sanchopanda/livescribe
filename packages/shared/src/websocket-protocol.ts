@@ -23,6 +23,7 @@ export interface StartSessionMessage {
   language: 'ru-RU' | 'en-US';
   platform?: 'meet' | 'zoom' | 'teams' | 'pachca';
   audioMode?: 'per-track' | 'mixed';
+  token?: string;
 }
 
 export interface StopSessionMessage {
