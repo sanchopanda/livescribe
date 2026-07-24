@@ -6,7 +6,8 @@ services:
       POSTGRES_PASSWORD: skribo
       POSTGRES_DB: skribo
     ports:
-      - "5432:5432"
+      # host 5433 → avoid clashing with the expeditor project's Postgres on 5432
+      - "5433:5432"
     volumes:
       - skribo_pgdata:/var/lib/postgresql/data
 volumes:
