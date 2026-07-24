@@ -1,11 +1,11 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { RegisterRequest, LoginRequest, AuthResponse } from '@livescribe/shared';
 import { prisma } from '../db/prisma.js';
 import { hashPassword, verifyPassword } from './passwords.js';
 import { signJwt } from './tokens.js';
 import { requireUser } from './guard.js';
 
-function setSession(reply: any, userId: string) {
+function setSession(reply: FastifyReply, userId: string) {
   reply.setCookie('skribo_session', signJwt(userId), {
     httpOnly: true, sameSite: 'lax', path: '/', maxAge: 60 * 60 * 24 * 30,
     secure: process.env.NODE_ENV === 'production',
@@ -15,17 +15,32 @@ function setSession(reply: any, userId: string) {
 export function registerAuthRoutes(server: FastifyInstance) {
   server.post('/api/auth/register', async (req, reply) => {
     const { email, password, name } = req.body as RegisterRequest;
-    if (!email || !password || password.length < 8) return reply.code(400).send({ error: 'invalid_input' });
-    const existing = await prisma.user.findUnique({ where: { email } });
+    if (typeof email !== 'string' || !email || typeof password !== 'string' || !password) {
+      return reply.code(400).send({ error: 'invalid_input' });
+    }
+    const normalizedEmail = email.trim().toLowerCase();
+    if (password.length < 8) return reply.code(400).send({ error: 'invalid_input' });
+    const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (existing) return reply.code(409).send({ error: 'email_taken' });
-    const user = await prisma.user.create({ data: { email, passwordHash: await hashPassword(password), name: name ?? null } });
-    setSession(reply, user.id);
-    return { user: { id: user.id, email: user.email, name: user.name } } as AuthResponse;
+    try {
+      const user = await prisma.user.create({
+        data: { email: normalizedEmail, passwordHash: await hashPassword(password), name: name ?? null },
+      });
+      setSession(reply, user.id);
+      return { user: { id: user.id, email: user.email, name: user.name } } as AuthResponse;
+    } catch (err: any) {
+      if (err?.code === 'P2002') return reply.code(409).send({ error: 'email_taken' });
+      throw err;
+    }
   });
 
   server.post('/api/auth/login', async (req, reply) => {
     const { email, password } = req.body as LoginRequest;
-    const user = await prisma.user.findUnique({ where: { email } });
+    if (typeof email !== 'string' || !email || typeof password !== 'string' || !password) {
+      return reply.code(400).send({ error: 'invalid_input' });
+    }
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (!user || !(await verifyPassword(password, user.passwordHash))) return reply.code(401).send({ error: 'invalid_credentials' });
     setSession(reply, user.id);
     return { user: { id: user.id, email: user.email, name: user.name } } as AuthResponse;
