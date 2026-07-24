@@ -14,12 +14,26 @@ interface Session {
   sttProvider: STTProvider | null;
   language: string;
   speaker: string | null;
+  userId?: string;
+  meetingId?: string;
+  startedAtMs?: number;
+}
+
+export interface SessionMeta {
+  userId?: string;
+  meetingId?: string;
+  startedAtMs?: number;
 }
 
 export class SessionManager {
   private sessions: Map<string, Session> = new Map();
 
-  createSession(connection: WebSocket, sttProvider: STTProvider, language: string): string {
+  createSession(
+    connection: WebSocket,
+    sttProvider: STTProvider,
+    language: string,
+    meta?: SessionMeta,
+  ): string {
     const sessionId = randomUUID();
 
     const session: Session = {
@@ -32,6 +46,9 @@ export class SessionManager {
       sttProvider,
       language,
       speaker: null,
+      userId: meta?.userId,
+      meetingId: meta?.meetingId,
+      startedAtMs: meta?.startedAtMs,
     };
 
     this.sessions.set(sessionId, session);

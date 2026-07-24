@@ -3,6 +3,8 @@ import type { ClientMessage, ServerMessage } from '@livescribe/shared';
 import { SessionManager } from './session.js';
 import { createSTTProvider } from '../stt/index.js';
 import type { STTProviderType } from '../stt/index.js';
+import { prisma } from '../db/prisma.js';
+import { hashToken } from '../auth/tokens.js';
 
 const sessionManager = new SessionManager();
 let wsConnectionSequence = 0;
@@ -102,6 +104,31 @@ export function registerWebSocketHandler(server: FastifyInstance) {
       participantProviders.clear();
     };
 
+    // If the session was tied to a persisted Meeting (i.e. a valid token was
+    // presented on 'start'), stamp it with an end time + duration. No-op for
+    // anonymous sessions (no meetingId).
+    const finalizeMeeting = async (sid: string) => {
+      const session = sessionManager.getSession(sid);
+      if (!session?.meetingId) return;
+
+      await prisma.meeting
+        .update({
+          where: { id: session.meetingId },
+          data: {
+            endedAt: new Date(),
+            durationSec: session.startedAtMs
+              ? Math.round((Date.now() - session.startedAtMs) / 1000)
+              : null,
+          },
+        })
+        .catch((err: Error) => {
+          server.log.warn(
+            { conn, sessionId: sid, error: err.message },
+            'Failed to finalize meeting',
+          );
+        });
+    };
+
     // server.log.info('WebSocket client connected');
 
     connection.on('message', async (data: Buffer) => {
@@ -121,7 +148,47 @@ export function registerWebSocketHandler(server: FastifyInstance) {
               { conn, language: activeLanguage, provider: activeProviderType, platform: (message as any).platform ?? null, audioMode },
               'Start message received',
             );
-            
+
+            // Resolve the personal token (if any) to a user and open a Meeting to
+            // persist this session's transcript. No token (or an invalid/unknown
+            // token) falls back to the pre-existing anonymous, non-persisted flow.
+            const rawToken = message.token;
+            const startedAtMs = Date.now();
+            let meetingId: string | undefined;
+            let meetingUserId: string | undefined;
+            if (rawToken) {
+              try {
+                const tok = await prisma.personalToken.findUnique({
+                  where: { tokenHash: hashToken(rawToken) },
+                });
+                if (tok) {
+                  meetingUserId = tok.userId;
+                  const meeting = await prisma.meeting.create({
+                    data: {
+                      userId: tok.userId,
+                      platform: (message as any).platform ?? null,
+                      audioMode: audioMode ?? null,
+                    },
+                  });
+                  meetingId = meeting.id;
+                  prisma.personalToken
+                    .update({ where: { id: tok.id }, data: { lastUsedAt: new Date() } })
+                    .catch(() => {});
+                  server.log.info(
+                    { conn, meetingId, userId: meetingUserId },
+                    'Meeting created for authenticated session',
+                  );
+                }
+              } catch (err) {
+                // DB hiccup or lookup failure: behave exactly like the anonymous
+                // path rather than failing the WS session.
+                server.log.warn(
+                  { conn, error: (err as Error).message },
+                  'Failed to resolve token for session; continuing without persistence',
+                );
+              }
+            }
+
             // Create STT provider (optional - audio will still be saved even if STT fails)
             let sttProvider: any = null;
             try {
@@ -136,6 +203,20 @@ export function registerWebSocketHandler(server: FastifyInstance) {
 
                 sendTranscript(result, resolvedSpeaker);
                 // server.log.debug(`Transcription (${result.isFinal ? 'final' : 'partial'}): ${result.text}`);
+
+                if (result.isFinal && session?.meetingId && result.text?.trim()) {
+                  prisma.transcriptSegment
+                    .create({
+                      data: {
+                        meetingId: session.meetingId,
+                        speaker: resolvedSpeaker ?? null,
+                        text: result.text.trim(),
+                        tsMs: session.startedAtMs ? Date.now() - session.startedAtMs : 0,
+                        confidence: typeof result.confidence === 'number' ? result.confidence : null,
+                      },
+                    })
+                    .catch(() => {});
+                }
               };
               
               await sttProvider.initialize(language, onResult);
@@ -161,8 +242,12 @@ export function registerWebSocketHandler(server: FastifyInstance) {
             }
 
             // Create session with STT provider
-            sessionId = sessionManager.createSession(connection, sttProvider, language);
-            server.log.info({ conn, sessionId, language }, 'Session started');
+            sessionId = sessionManager.createSession(connection, sttProvider, language, {
+              userId: meetingUserId,
+              meetingId,
+              startedAtMs,
+            });
+            server.log.info({ conn, sessionId, language, meetingId }, 'Session started');
 
             const response: ServerMessage = {
               type: 'status',
@@ -354,6 +439,7 @@ export function registerWebSocketHandler(server: FastifyInstance) {
           case 'stop': {
             if (sessionId) {
               await destroyParticipantProviders();
+              await finalizeMeeting(sessionId);
               await sessionManager.destroySession(sessionId);
               // server.log.info(`Session stopped: ${sessionId}`);
 
@@ -387,6 +473,7 @@ export function registerWebSocketHandler(server: FastifyInstance) {
     connection.on('close', async () => {
       if (sessionId) {
         await destroyParticipantProviders();
+        await finalizeMeeting(sessionId);
         await sessionManager.destroySession(sessionId);
         server.log.info({ conn, sessionId }, 'WebSocket closed, session destroyed');
       } else {
@@ -398,6 +485,7 @@ export function registerWebSocketHandler(server: FastifyInstance) {
       server.log.warn({ conn, sessionId }, 'WebSocket error');
       await destroyParticipantProviders();
       if (sessionId) {
+        await finalizeMeeting(sessionId);
         await sessionManager.destroySession(sessionId);
       }
     });
