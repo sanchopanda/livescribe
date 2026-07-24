@@ -40,6 +40,7 @@ export function LoginPage() {
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
+          autoComplete="email"
           required
         />
         <TextField
@@ -48,6 +49,7 @@ export function LoginPage() {
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
+          autoComplete="current-password"
           required
         />
         {error && <span className={styles.formError}>{error}</span>}

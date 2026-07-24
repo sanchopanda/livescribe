@@ -38,13 +38,21 @@ export function RegisterPage() {
       <form className={styles.card} onSubmit={onSubmit}>
         <div className={styles.brand}>Skribo</div>
         <h1 className={styles.title}>Регистрация</h1>
-        <TextField id="name" label="Имя" type="text" value={name} onChange={(e) => setName(e.target.value)} />
+        <TextField
+          id="name"
+          label="Имя"
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          autoComplete="name"
+        />
         <TextField
           id="email"
           label="Email"
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
+          autoComplete="email"
           required
         />
         <TextField
@@ -53,6 +61,7 @@ export function RegisterPage() {
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
+          autoComplete="new-password"
           required
         />
         {error && <span className={styles.formError}>{error}</span>}
