@@ -14,11 +14,18 @@
 - [x] LS-06 — **Хостинг бэкенда.** Beget VPS (`45.147.176.79`), systemd `skribo-backend`,
   Caddy TLS, `wss://api.skribo.ru/ws` работает. ADR-0002 + `deploy`-скилл. (Хвосты: CORS,
   чистка manifest, хардненинг сервера.)
-- [ ] LS-07 — **Postgres + персистентность.** Сейчас транскрипты только в WAV на диск.
-  Добавить БД и хранение сессий/транскриптов; аудио — в объектное хранилище.
-- [ ] LS-08 — **Лендинг + скелет админки.** Пакеты `packages/landing` и `packages/admin`
-  (React+Vite+Tailwind), single-port раздача из бэкенда. Сначала ADR-0003 (раскладка
-  монорепо + single-port) и краткая спека, потом код.
+- [x] LS-07 — **Postgres + персистентность.** Prisma-схема + сохранение сессий/транскриптов
+  (WS-сессия с токеном → `Meeting` + сегменты). Сделано в фундаменте кабинета. (Аудио в
+  объектное хранилище — отдельный follow-up.)
+- [~] LS-08 — **Кабинет (админка).** Стек — React+Vite+RR7+Radix+`*.module.scss` (как
+  expeditor, не Tailwind), см. спеку `docs/superpowers/specs/2026-07-24-admin-cabinet-design.md`.
+  - [x] sub-plan 1: фундамент — auth (email+пароль, JWT-cookie), `/api/auth`, `/api/tokens`,
+    `/api/meetings` (list+detail). Ревью пройдено, hardening-фикс применён.
+  - [ ] sub-plan 2: SPA-шелл `packages/admin` + `/login`/`/register` + `/settings` (токен);
+    деплой на `app.skribo.ru`.
+  - [ ] sub-plan 3: страница списка переговоров.
+  - [ ] sub-plan 4: карточка встречи (транскрипт; заглушка анализа).
+  - Лендинг — отдельно, позже.
 - [ ] LS-09 — **Анализ переговоров.** LLM-API поверх истории транскриптов в админке
   (саммари, ключевые моменты, поиск).
 

@@ -5,35 +5,38 @@
 
 ## Сделано (последнее)
 
-- Meet per-track WebRTC-пайплайн (`ea04f9c`).
-- STT сведён к одному Deepgram (`245436c`, ADR-0001).
-- dev-flow: скиллы `proceed`/`implement-task`/`test-task`/`review-task`/`release`,
-  конвенции документации, `CHANGELOG.md`.
+- **LS-06 — Хостинг бэкенда.** Beget VPS `45.147.176.79` (Ubuntu 24.04, Node 20), systemd
+  `skribo-backend`, Caddy + Let's Encrypt; `wss://api.skribo.ru/ws` → `101` проверено снаружи.
+  ADR-0002 + `deploy`-скилл. Продукт переименован в **Skribo** (ADR-0004).
+- **LS-07 — Персистентность (Postgres).** Prisma-схема (User/Meeting/TranscriptSegment/
+  Analysis/PersonalToken); WS-сессия с валидным токеном сохраняется как `Meeting` + сегменты.
+- **LS-08 sub-plan 1 — Фундамент кабинета.** Email+пароль auth (JWT httpOnly cookie),
+  `/api/auth/*`, персональные токены `/api/tokens`, read-API `/api/meetings` (list+detail,
+  user-scoped). Диапазон `a082fab..8d18083`. Финальное ревью (opus) → merge with fixes;
+  фикс `8d18083` (prod-требование секретов, verifyJwt claim, prisma generate, prod-CORS).
+- Meet per-track (`ea04f9c`), STT=Deepgram (`245436c`, ADR-0001), dev-flow, ADR-0003.
 
 ## Следующее
 
-- **LS-06 — Хостинг бэкенда** (Yandex Cloud) + ADR-0002 (верхний кандидат из
-  [`backlog.md`](backlog.md)). Продуктовое направление: хостинг → Postgres → лендинг/админка
-  → анализ; покрытие платформ (Zoom/Teams per-track) сдвинуто ниже.
+- **LS-08 sub-plan 2 — SPA-шелл + auth-страницы** (`packages/admin`: React/Vite/RR7/Radix/
+  `*.module.scss`; layout, `/login`+`/register`, `/settings` с токеном; деплой на `app.skribo.ru`).
+  Затем sub-plan 3 (список переговоров) и 4 (карточка встречи).
 
 ## Задача в работе
 
-- **LS-06 — Хостинг бэкенда.** Решения зафиксированы: ADR-0002 (**Beget**, Москва,
-  Caddy TLS/wss, systemd, Postgres на ВМ), домены — `api.skribo.ru` (сейчас) + `skribo.io`
-  (бренд позже). Продукт переименован в **Skribo** (ADR-0004).
-  - ✅ Код-подготовка: WS-URL расширения вынесен в build-time конфиг (Vite `define` `__WS_URL__`).
-  - ✅ Сервер Beget поднят: `45.147.176.79`, Ubuntu 24.04, Node 20; вход по ключу.
-  - ✅ Backend задеплоен: rsync → `npm install` → сборка shared+backend; systemd
-    `skribo-backend` (active, `:3001`); WS-хендшейк отвечает `101`.
-  - ✅ Caddy + Let's Encrypt: сертификат `api.skribo.ru` выпущен (tls-alpn-01), слушает 80/443.
-  - ✅ A-запись `api.skribo.ru → 45.147.176.79` (reg.ru, NS `ns*.reg.ru`) — резолвится.
-  - ✅ **Сквозная проверка: `wss://api.skribo.ru/ws` → `101` снаружи** (по HTTP/1.1).
-  - ✅ Прод-сборка расширения (`WS_URL=wss://api.skribo.ru/ws`) — URL зашит.
-  - ✅ `deploy`-скилл кодифицирован (`.claude/skills/deploy/`).
-  - **LS-06 по сути готов.** Хвосты: почистить localhost из manifest host_permissions
-    (в рамках LS-05), сузить CORS до origin расширения, security-хардненинг сервера.
-  - 🔒 Безопасность: root-пароль засветился в чате — сменить (панель Beget «Сбросить
-    пароль») и отключить парольный вход по SSH (ключ уже работает).
+- Нет (между под-планами). 22+ коммитов не запушены в `origin`.
+
+## Хвосты / follow-up (hardening, вне текущего под-плана)
+
+- Валидация тел/квери-параметров роутов (400 вместо 500) — auth/tokens/meetings.
+- Тайминг-энумерация на `/api/auth/login`; DELETE токена 404-on-miss.
+- Интеграционные тесты роутов бэкенда (сейчас только unit auth-логики).
+- Заполнение `Meeting.title` + поиск (в LS-09).
+- Почистить `localhost` из manifest host_permissions (LS-05); redundant
+  `destroyParticipantProviders`; убрать `(message as any)`-касты.
+- 🔒 Сервер: сменить засветившийся root-пароль (панель Beget), отключить парольный SSH;
+  задать `NODE_ENV=production`/`JWT_SECRET`/`DATABASE_URL`/`WEB_ORIGIN` в серверном `.env`
+  и провижн Postgres перед `prisma migrate deploy` (см. обновлённый `deploy`-скилл).
 
 ## Блокеры
 
