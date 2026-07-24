@@ -4,6 +4,7 @@ import cookie from '@fastify/cookie';
 import websocket from '@fastify/websocket';
 import { registerWebSocketHandler } from './websocket/handler.js';
 import { registerAuthRoutes } from './auth/routes.js';
+import { registerTokenRoutes } from './api/tokens-routes.js';
 import { readdirSync, statSync, createReadStream } from 'fs';
 import { join } from 'path';
 
@@ -38,6 +39,9 @@ export async function createServer() {
 
   // Register auth routes
   registerAuthRoutes(server);
+
+  // Register personal token routes
+  registerTokenRoutes(server);
 
   // Health check endpoint
   server.get('/health', async () => {
