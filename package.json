@@ -13,11 +13,13 @@
   "scripts": {
     "dev:extension": "npm run dev --workspace=@livescribe/extension",
     "dev:backend": "npm run dev --workspace=@livescribe/backend",
+    "dev:admin": "npm run dev --workspace=@livescribe/admin",
     "dev": "concurrently --kill-others-on-fail --raw \"npm run dev:backend\" \"npm run dev:extension\"",
     "dev:stop": "pkill -f 'tsx watch' && pkill -f 'vite build' || true",
     "build": "npm run build --workspace=@livescribe/shared && npm run build --workspace=@livescribe/backend && npm run build --workspace=@livescribe/extension",
     "build:extension": "npm run build --workspace=@livescribe/extension",
     "build:backend": "npm run build --workspace=@livescribe/backend",
+    "build:admin": "npm run build --workspace=@livescribe/admin",
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "type-check": "npm run build --workspace=@livescribe/shared && npm run type-check --workspace=@livescribe/backend && npm run type-check --workspace=@livescribe/extension && npm run type-check --workspace=@livescribe/shared",
