@@ -137,6 +137,16 @@ export function registerWebSocketHandler(server: FastifyInstance) {
 
         switch (message.type) {
           case 'start': {
+            // A second 'start' on the same connection without an intervening
+            // 'stop' must not leave the previous session's Meeting unfinalized
+            // or orphan its segments. Tear it down first, mirroring 'stop'.
+            if (sessionId) {
+              await destroyParticipantProviders();
+              await finalizeMeeting(sessionId);
+              await sessionManager.destroySession(sessionId);
+              sessionId = null;
+            }
+
             const language = message.language || 'ru-RU';
             const audioMode = (message as any).audioMode || null;
             activeLanguage = language;
@@ -215,7 +225,12 @@ export function registerWebSocketHandler(server: FastifyInstance) {
                         confidence: typeof result.confidence === 'number' ? result.confidence : null,
                       },
                     })
-                    .catch(() => {});
+                    .catch((err: Error) =>
+                      server.log.warn(
+                        { conn, sessionId, error: err.message },
+                        'Failed to persist transcript segment',
+                      ),
+                    );
                 }
               };
               
