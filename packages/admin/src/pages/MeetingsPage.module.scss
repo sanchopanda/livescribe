@@ -13,12 +13,86 @@
   margin: 0;
 }
 
-.empty {
-  color: $text-muted;
-  font-size: 14px;
-  padding: 32px;
-  background: $bg;
-  border: 1px dashed $border;
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.search {
+  flex: 1 1 240px;
+  padding: 10px 12px;
+  border: 1px solid $border;
   border-radius: $radius;
-  text-align: center;
+  font-size: 14px;
+  font-family: inherit;
+  color: $text;
+  background: $bg;
+
+  &:focus {
+    outline: 2px solid $accent;
+    outline-offset: 0;
+    border-color: $accent;
+  }
+}
+
+.sort {
+  padding: 10px 12px;
+  border: 1px solid $border;
+  border-radius: $radius;
+  font-size: 14px;
+  font-family: inherit;
+  color: $text;
+  background: $bg;
+  cursor: pointer;
+
+  &:focus {
+    outline: 2px solid $accent;
+    outline-offset: 0;
+    border-color: $accent;
+  }
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  padding: 16px;
+  background: $bg;
+  border: 1px solid $border;
+  border-radius: $radius;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+
+  &:hover {
+    border-color: $accent;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  }
+}
+
+.cardTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: $text;
+}
+
+.cardMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 13px;
+  color: $text-muted;
+}
+
+.error {
+  color: #dc2626;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
