@@ -7,6 +7,7 @@ import { CabinetLayout } from './layout/CabinetLayout';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { MeetingsPage } from './pages/MeetingsPage';
+import { MeetingDetailPage } from './pages/MeetingDetailPage';
 import { SettingsPage } from './pages/SettingsPage';
 import './styles/global.scss';
 
@@ -23,6 +24,7 @@ createRoot(root).render(
           <Route element={<ProtectedRoute />}>
             <Route element={<CabinetLayout />}>
               <Route index element={<MeetingsPage />} />
+              <Route path="meetings/:id" element={<MeetingDetailPage />} />
               <Route path="settings" element={<SettingsPage />} />
             </Route>
           </Route>

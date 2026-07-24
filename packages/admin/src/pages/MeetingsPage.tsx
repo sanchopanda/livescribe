@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { MeetingDTO } from '@livescribe/shared';
 import { listMeetings } from '../api';
 import { formatDate, formatDuration, platformLabel } from '../lib/format';
@@ -73,21 +74,23 @@ export function MeetingsPage() {
       {status === 'ready' && meetings.length > 0 && (
         <ul className={styles.list}>
           {meetings.map((m) => (
-            <li key={m.id} className={styles.card}>
-              <div className={styles.cardTitle}>{m.title || platformLabel(m.platform)}</div>
-              <div className={styles.cardMeta}>
-                <span>{platformLabel(m.platform)}</span>
-                <span>·</span>
-                <span>{formatDate(m.startedAt)}</span>
-                <span>·</span>
-                <span>{formatDuration(m.durationSec)}</span>
-                {m.participantsCount ? (
-                  <>
-                    <span>·</span>
-                    <span>{m.participantsCount} уч.</span>
-                  </>
-                ) : null}
-              </div>
+            <li key={m.id}>
+              <Link to={`/meetings/${m.id}`} className={styles.card}>
+                <div className={styles.cardTitle}>{m.title || platformLabel(m.platform)}</div>
+                <div className={styles.cardMeta}>
+                  <span>{platformLabel(m.platform)}</span>
+                  <span>·</span>
+                  <span>{formatDate(m.startedAt)}</span>
+                  <span>·</span>
+                  <span>{formatDuration(m.durationSec)}</span>
+                  {m.participantsCount ? (
+                    <>
+                      <span>·</span>
+                      <span>{m.participantsCount} уч.</span>
+                    </>
+                  ) : null}
+                </div>
+              </Link>
             </li>
           ))}
         </ul>
