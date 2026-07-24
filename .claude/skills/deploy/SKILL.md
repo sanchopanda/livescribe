@@ -129,6 +129,14 @@ app.skribo.ru {
 ```
 Пост-проверка: `curl https://app.skribo.ru/login` → 200 (SPA), `https://app.skribo.ru/api/auth/me` → 401.
 
+## ⚠️ Урок: при изменении бэкенда — пересобрать И перезапустить
+
+Правка кабинета (`admin`) НЕ обновляет бэкенд. Если менялся `packages/backend` (или `shared`),
+после rsync обязательно: `npm run build --workspace=@livescribe/shared && ... --workspace=@livescribe/backend`
+и `systemctl restart skribo-backend`. Иначе новые эндпоинты отвечают `404` (старый `dist/`),
+как было с `/api/auth/extension-login` — деплой кабинета обновил только `admin`, бэкенд остался
+старым. Проверка: `curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:3001/api/auth/extension-token` → `401`, не `404`.
+
 ## Расширение под прод
 
 Клиент подключается к бэкенду по адресу из build-time конфига:
