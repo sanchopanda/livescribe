@@ -23,23 +23,28 @@ export default function App() {
     let cancelled = false;
 
     async function init() {
-      const { skriboToken } = await chrome.storage.local.get('skriboToken');
-      const storedEmail = await currentAccount();
-      if (typeof skriboToken === 'string' && skriboToken && storedEmail) {
-        if (!cancelled) {
-          setEmail(storedEmail);
-          setStatus('authed');
+      try {
+        const { skriboToken } = await chrome.storage.local.get('skriboToken');
+        const storedEmail = await currentAccount();
+        if (typeof skriboToken === 'string' && skriboToken && storedEmail) {
+          if (!cancelled) {
+            setEmail(storedEmail);
+            setStatus('authed');
+          }
+          return;
         }
-        return;
-      }
 
-      const detected = await tryAutoDetect();
-      if (cancelled) return;
-      if (detected) {
-        setEmail(detected.email);
-        setStatus('authed');
-      } else {
-        setStatus('guest');
+        const detected = await tryAutoDetect();
+        if (cancelled) return;
+        if (detected) {
+          setEmail(detected.email);
+          setStatus('authed');
+        } else {
+          setStatus('guest');
+        }
+      } catch {
+        // never leave the popup stuck on "loading" — drop to the login form
+        if (!cancelled) setStatus('guest');
       }
     }
 
