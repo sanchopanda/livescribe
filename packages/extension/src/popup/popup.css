@@ -73,6 +73,36 @@ body {
   box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.15);
 }
 
+.skribo-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.skribo-input--with-toggle {
+  padding-right: 34px;
+}
+
+.skribo-toggle {
+  position: absolute;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #6b7280;
+  cursor: pointer;
+  border-radius: 5px;
+}
+
+.skribo-toggle:hover {
+  color: #111827;
+}
+
 .skribo-button {
   margin-top: 4px;
   padding: 8px 12px;
