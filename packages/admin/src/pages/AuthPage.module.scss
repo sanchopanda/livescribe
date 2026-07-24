@@ -1,0 +1,52 @@
+@use '../styles/tokens' as *;
+
+.wrap {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: $bg-subtle;
+  padding: 24px;
+}
+
+.card {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 32px;
+  background: $bg;
+  border: 1px solid $border;
+  border-radius: $radius;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.brand {
+  font-size: 20px;
+  font-weight: 700;
+  color: $accent;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 600;
+  color: $text;
+  margin: 0;
+}
+
+.formError {
+  color: #dc2626;
+  font-size: 13px;
+}
+
+.switch {
+  font-size: 13px;
+  color: $text-muted;
+  text-align: center;
+
+  a {
+    color: $accent;
+    font-weight: 600;
+  }
+}
