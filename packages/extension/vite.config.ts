@@ -7,10 +7,16 @@ import path from 'path';
 // Backend WebSocket URL is baked in at build time.
 // Dev (default): ws://localhost:3001/ws. Prod: WS_URL=wss://api.skribo.ru/ws npm run build:extension
 const WS_URL = process.env.WS_URL || 'ws://localhost:3001/ws';
+// Backend HTTP host (email/password login) and cabinet host (session auto-detect),
+// also baked in at build time. Prod: API_URL=https://api.skribo.ru CABINET_URL=https://app.skribo.ru npm run build:extension
+const API_URL = process.env.API_URL || 'http://localhost:3001';
+const CABINET_URL = process.env.CABINET_URL || 'http://localhost:5173';
 
 export default defineConfig({
   define: {
     __WS_URL__: JSON.stringify(WS_URL),
+    __API_URL__: JSON.stringify(API_URL),
+    __CABINET_URL__: JSON.stringify(CABINET_URL),
   },
   plugins: [react(), crx({ manifest: manifest as any })],
   resolve: {

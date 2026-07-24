@@ -634,22 +634,6 @@ function createUIWidget() {
         <option value="per-track" ${selectedAudioMode === 'per-track' ? 'selected' : ''}>Per-track</option>
         <option value="mixed" ${selectedAudioMode === 'mixed' ? 'selected' : ''}>Mixed</option>
       </select>
-      <label for="livescribe-token" style="
-        font-size: 11px;
-        color: #374151;
-        margin-bottom: 4px;
-        display: block;
-      ">Токен Skribo (из кабинета)</label>
-      <input id="livescribe-token" type="text" placeholder="Вставьте токен из Настроек кабинета" style="
-        width: 100%;
-        padding: 6px 8px;
-        margin-bottom: 8px;
-        border: 1px solid #d1d5db;
-        border-radius: 4px;
-        font-size: 12px;
-        background: white;
-        box-sizing: border-box;
-      " />
       <div style="display: flex; gap: 8px; margin-bottom: 8px;">
         <button id="livescribe-start" style="
           flex: 1;
@@ -775,21 +759,6 @@ function createUIWidget() {
         });
       }
     });
-
-  const tokenInput = document.getElementById('livescribe-token') as HTMLInputElement | null;
-  if (tokenInput) {
-    chrome.storage.local.get('skriboToken', (result) => {
-      if (typeof result.skriboToken === 'string') {
-        tokenInput.value = result.skriboToken;
-      }
-    });
-    const saveTokenValue = () => {
-      const trimmed = tokenInput.value.trim();
-      chrome.storage.local.set({ skriboToken: trimmed });
-    };
-    tokenInput.addEventListener('change', saveTokenValue);
-    tokenInput.addEventListener('blur', saveTokenValue);
-  }
 
   renderAudioMetrics();
   renderWsRecoveryIndicator();
