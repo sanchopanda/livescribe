@@ -1,7 +1,16 @@
 @use '../styles/tokens' as *;
 .field { display: flex; flex-direction: column; gap: 6px; }
 .label { font-size: 13px; color: $text-muted; }
-.input { padding: 10px 12px; border: 1px solid $border; border-radius: $radius; font-size: 14px; }
+.inputWrap { position: relative; display: flex; align-items: center; }
+.input { width: 100%; padding: 10px 12px; border: 1px solid $border; border-radius: $radius; font-size: 14px; }
 .input:focus { outline: 2px solid $accent; outline-offset: 0; border-color: $accent; }
+.withToggle { padding-right: 40px; }
+.toggle {
+  position: absolute; right: 6px; display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; padding: 0; border: 0; background: none; cursor: pointer;
+  color: $text-muted; border-radius: 6px;
+}
+.toggle:hover { color: $text; }
+.toggle:focus-visible { outline: 2px solid $accent; }
 .invalid { border-color: #dc2626; }
 .error { color: #dc2626; font-size: 12px; }
