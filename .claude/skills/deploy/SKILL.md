@@ -100,6 +100,35 @@ Node 20 (`deb.nodesource.com/setup_20.x`), `apt-get install nodejs build-essenti
 rsync`; Caddy (репо cloudsmith) + `/etc/caddy/Caddyfile`; systemd-юнит `skribo-backend`;
 `.env` с ключом Deepgram. См. историю LS-06 / ADR-0002.
 
+## Кабинет (admin SPA) на `app.skribo.ru`
+
+Раздаётся тем же Caddy на отдельном домене `app.skribo.ru` (A-запись на reg.ru → IP сервера),
+single-origin: статика SPA + прокси `/api` на бэкенд.
+
+Провижн (один раз): `apt-get install postgresql` на ВМ; создать роль/БД `skribo`; в серверном
+`.env` (`packages/backend/.env`) — `DATABASE_URL=postgresql://skribo:<pass>@localhost:5432/skribo?schema=public`,
+`JWT_SECRET=<rand>`, `NODE_ENV=production`, `WEB_ORIGIN=https://app.skribo.ru`. Caddy бежит под
+юзером `caddy` и НЕ читает `/root`, поэтому статику кладём в `/var/www/skribo-admin`.
+
+На каждый деплой кабинета (после общего билда):
+```bash
+ssh $SSHOPT root@45.147.176.79 '
+  cd /root/skribo
+  npm run build --workspace=@livescribe/admin
+  mkdir -p /var/www/skribo-admin && rm -rf /var/www/skribo-admin/*
+  cp -r packages/admin/dist/* /var/www/skribo-admin/
+  chmod -R a+rX /var/www/skribo-admin; chmod a+rX /var/www
+'
+```
+Caddyfile (vhost кабинета; `api.skribo.ru` — как раньше):
+```
+app.skribo.ru {
+	handle /api/* { reverse_proxy 127.0.0.1:3001 }
+	handle { root * /var/www/skribo-admin; try_files {path} /index.html; file_server }
+}
+```
+Пост-проверка: `curl https://app.skribo.ru/login` → 200 (SPA), `https://app.skribo.ru/api/auth/me` → 401.
+
 ## Расширение под прод
 
 Клиент подключается к бэкенду по адресу из build-time конфига:
