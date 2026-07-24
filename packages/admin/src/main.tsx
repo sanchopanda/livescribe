@@ -7,12 +7,8 @@ import { CabinetLayout } from './layout/CabinetLayout';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { MeetingsPage } from './pages/MeetingsPage';
+import { SettingsPage } from './pages/SettingsPage';
 import './styles/global.scss';
-
-// TODO(Task 6): заменить на импорт реального SettingsPage.
-function SettingsPagePlaceholder() {
-  return <div style={{ padding: 24 }}>Настройки — скоро</div>;
-}
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Не найден #root');
@@ -27,7 +23,7 @@ createRoot(root).render(
           <Route element={<ProtectedRoute />}>
             <Route element={<CabinetLayout />}>
               <Route index element={<MeetingsPage />} />
-              <Route path="settings" element={<SettingsPagePlaceholder />} />
+              <Route path="settings" element={<SettingsPage />} />
             </Route>
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

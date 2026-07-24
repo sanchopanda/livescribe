@@ -3,8 +3,8 @@ import type { AuthResponse, LoginRequest, RegisterRequest, PersonalTokenDTO } fr
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
     credentials: 'include',
-    headers: { 'content-type': 'application/json' },
     ...init,
+    headers: { ...(init?.body ? { 'content-type': 'application/json' } : {}), ...init?.headers },
   });
   if (!res.ok) {
     let message = `HTTP ${res.status}`;
