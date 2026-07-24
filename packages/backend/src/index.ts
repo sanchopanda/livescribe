@@ -4,6 +4,20 @@ import { createServer } from './server.js';
 // Load environment variables
 config();
 
+// Refuse to boot in production without required secrets configured.
+if (process.env.NODE_ENV === 'production') {
+  const missing: string[] = [];
+  if (!process.env.JWT_SECRET) missing.push('JWT_SECRET');
+  if (!process.env.DATABASE_URL) missing.push('DATABASE_URL');
+  if (missing.length > 0) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `Refusing to start in production: missing required environment variable(s): ${missing.join(', ')}`
+    );
+    process.exit(1);
+  }
+}
+
 const PORT = process.env.WS_PORT ? parseInt(process.env.WS_PORT, 10) : 3001;
 
 async function start() {

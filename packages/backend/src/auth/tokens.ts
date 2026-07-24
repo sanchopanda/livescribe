@@ -15,7 +15,10 @@ export function signJwt(userId: string): string {
 }
 export function verifyJwt(token: string): { userId: string } | null {
   try {
-    const p = jwt.verify(token, SECRET) as { userId: string };
+    const p = jwt.verify(token, SECRET) as { userId?: unknown };
+    if (typeof p.userId !== 'string' || p.userId.length === 0) {
+      return null;
+    }
     return { userId: p.userId };
   } catch {
     return null;

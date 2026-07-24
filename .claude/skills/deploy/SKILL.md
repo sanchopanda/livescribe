@@ -18,15 +18,24 @@ description: >-
 - Запуск: systemd-сервис **`skribo-backend`** → `node dist/index.js`, WorkingDirectory
   `/root/skribo/packages/backend`, слушает `:3001` (env `WS_PORT`).
 - Прод-секреты: `/root/skribo/packages/backend/.env` (`DEEPGRAM_API_KEY`, `DEEPGRAM_MODEL`,
-  `WS_PORT`, `STT_PROVIDER`) — **не перезаписывать rsync-ом**.
+  `WS_PORT`, `STT_PROVIDER`, `DATABASE_URL`, `JWT_SECRET`, `WEB_ORIGIN`, `NODE_ENV=production`)
+  — **не перезаписывать rsync-ом**. Бэкенд отказывается стартовать в проде без
+  `JWT_SECRET`/`DATABASE_URL`.
 - TLS/reverse-proxy: **Caddy**, `/etc/caddy/Caddyfile` (`api.skribo.ru` → `127.0.0.1:3001`),
   авто-Let's Encrypt. Слушает 80/443.
 - Домен: `api.skribo.ru` (A-запись на reg.ru, NS `ns*.reg.ru`).
+
+## База данных (Postgres)
+
+На сервере должен быть провижен Postgres (managed БД от Beget либо локальный Postgres на
+ВМ) **до** `prisma migrate deploy` — иначе миграция упадёт. `DATABASE_URL` в `.env` должен
+указывать на него.
 
 ## Пред-условия
 
 - Локально: `npm run type-check` и `npm run build` зелёные.
 - `api.skribo.ru` резолвится в IP сервера (иначе Caddy не выпустит TLS).
+- Postgres на сервере провижен, `DATABASE_URL` в `.env` настроен.
 - Пользователь явно попросил деплой.
 
 ## Шаги
@@ -42,7 +51,9 @@ rsync -az -e "ssh $SSHOPT" \
   /home/aleksander/code/livescribe/ root@45.147.176.79:/root/skribo/
 ```
 
-2. **Сборка на сервере** (чистим stale buildinfo → shared → backend):
+2. **Сборка на сервере** (чистим stale buildinfo → shared → backend). `npm install` сам
+   прогонит `postinstall: prisma generate` в `packages/backend` — Prisma-клиент
+   регенерируется на каждую установку зависимостей:
 ```bash
 ssh $SSHOPT root@45.147.176.79 '
   set -e
@@ -54,7 +65,15 @@ ssh $SSHOPT root@45.147.176.79 '
 '
 ```
 
-3. **Рестарт сервиса + пост-проверка:**
+3. **Прогон миграций БД** (после сборки, перед рестартом сервиса):
+```bash
+ssh $SSHOPT root@45.147.176.79 '
+  cd /root/skribo/packages/backend
+  npx prisma migrate deploy
+'
+```
+
+4. **Рестарт сервиса + пост-проверка:**
 ```bash
 ssh $SSHOPT root@45.147.176.79 '
   systemctl restart skribo-backend

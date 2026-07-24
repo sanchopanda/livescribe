@@ -26,8 +26,13 @@ export async function createServer() {
   });
 
   // Register plugins
+  const isProduction = process.env.NODE_ENV === 'production';
+  const corsOrigins = [process.env.WEB_ORIGIN || 'https://app.skribo.ru'];
+  if (!isProduction) {
+    corsOrigins.push('http://localhost:5173');
+  }
   await server.register(cors, {
-    origin: [process.env.WEB_ORIGIN || 'http://localhost:5173', 'https://app.skribo.ru'],
+    origin: corsOrigins,
     credentials: true,
   });
 
