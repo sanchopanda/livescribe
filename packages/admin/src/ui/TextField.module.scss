@@ -1,0 +1,7 @@
+@use '../styles/tokens' as *;
+.field { display: flex; flex-direction: column; gap: 6px; }
+.label { font-size: 13px; color: $text-muted; }
+.input { padding: 10px 12px; border: 1px solid $border; border-radius: $radius; font-size: 14px; }
+.input:focus { outline: 2px solid $accent; outline-offset: 0; border-color: $accent; }
+.invalid { border-color: #dc2626; }
+.error { color: #dc2626; font-size: 12px; }

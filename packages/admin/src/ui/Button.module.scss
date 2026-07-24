@@ -1,0 +1,6 @@
+@use '../styles/tokens' as *;
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 16px; border-radius: 999px; font-weight: 600; cursor: pointer; border: 1px solid transparent; }
+.btn:disabled { opacity: .6; cursor: not-allowed; }
+.primary { background: $accent; color: #fff; }
+.primary:hover:not(:disabled) { background: $accent-hover; }
+.ghost { background: transparent; color: $text; border-color: $border; }
