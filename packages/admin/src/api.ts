@@ -1,4 +1,4 @@
-import type { AuthResponse, LoginRequest, RegisterRequest, PersonalTokenDTO, MeetingDTO } from '@livescribe/shared';
+import type { AuthResponse, LoginRequest, RegisterRequest, PersonalTokenDTO, MeetingDTO, MeetingDetailDTO } from '@livescribe/shared';
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
@@ -28,3 +28,4 @@ export const listMeetings = (params?: { q?: string; sort?: 'newest' | 'oldest' }
   const suffix = qs.toString() ? `?${qs.toString()}` : '';
   return req<MeetingDTO[]>(`/meetings${suffix}`);
 };
+export const getMeeting = (id: string) => req<MeetingDetailDTO>(`/meetings/${id}`);

@@ -1,0 +1,87 @@
+@use '../styles/tokens' as *;
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.back {
+  color: $text-muted;
+  text-decoration: none;
+  font-size: 13px;
+  align-self: flex-start;
+
+  &:hover {
+    color: $accent;
+  }
+}
+
+.title {
+  font-size: 22px;
+  font-weight: 600;
+  color: $text;
+  margin: 0;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13px;
+  color: $text-muted;
+}
+
+.body {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 16px;
+
+  @media (max-width: 720px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.transcript,
+.analysis {
+  background: $bg;
+  border: 1px solid $border;
+  border-radius: $radius;
+  padding: 16px;
+}
+
+.sectionTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: $text-muted;
+  text-transform: uppercase;
+  margin: 0 0 12px;
+}
+
+.segments {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.segment {
+  display: flex;
+  flex-direction: column;
+}
+
+.speaker {
+  font-size: 13px;
+  font-weight: 600;
+  color: $accent;
+}
+
+.text {
+  color: $text;
+}
+
+.error {
+  color: #dc2626;
+}
