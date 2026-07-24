@@ -1,7 +1,9 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import cookie from '@fastify/cookie';
 import websocket from '@fastify/websocket';
 import { registerWebSocketHandler } from './websocket/handler.js';
+import { registerAuthRoutes } from './auth/routes.js';
 import { readdirSync, statSync, createReadStream } from 'fs';
 import { join } from 'path';
 
@@ -23,13 +25,19 @@ export async function createServer() {
 
   // Register plugins
   await server.register(cors, {
-    origin: true, // Allow all origins in development
+    origin: [process.env.WEB_ORIGIN || 'http://localhost:5173', 'https://app.skribo.ru'],
+    credentials: true,
   });
+
+  await server.register(cookie);
 
   await server.register(websocket);
 
   // Register WebSocket routes
   registerWebSocketHandler(server);
+
+  // Register auth routes
+  registerAuthRoutes(server);
 
   // Health check endpoint
   server.get('/health', async () => {
