@@ -1,4 +1,4 @@
-import type { AuthResponse, LoginRequest, RegisterRequest, PersonalTokenDTO } from '@livescribe/shared';
+import type { AuthResponse, LoginRequest, RegisterRequest, PersonalTokenDTO, MeetingDTO } from '@livescribe/shared';
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
@@ -21,3 +21,10 @@ export const logout = () => req<{ ok: true }>('/auth/logout', { method: 'POST' }
 export const listTokens = () => req<PersonalTokenDTO[]>('/tokens');
 export const createToken = (label?: string) => req<PersonalTokenDTO>('/tokens', { method: 'POST', body: JSON.stringify({ label }) });
 export const deleteToken = (id: string) => req<{ ok: true }>(`/tokens/${id}`, { method: 'DELETE' });
+export const listMeetings = (params?: { q?: string; sort?: 'newest' | 'oldest' }) => {
+  const qs = new URLSearchParams();
+  if (params?.q) qs.set('q', params.q);
+  if (params?.sort) qs.set('sort', params.sort);
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  return req<MeetingDTO[]>(`/meetings${suffix}`);
+};
