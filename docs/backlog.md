@@ -21,8 +21,8 @@
   expeditor, не Tailwind), см. спеку `docs/superpowers/specs/2026-07-24-admin-cabinet-design.md`.
   - [x] sub-plan 1: фундамент — auth (email+пароль, JWT-cookie), `/api/auth`, `/api/tokens`,
     `/api/meetings` (list+detail). Ревью пройдено, hardening-фикс применён.
-  - [ ] sub-plan 2: SPA-шелл `packages/admin` + `/login`/`/register` + `/settings` (токен);
-    деплой на `app.skribo.ru`.
+  - [x] sub-plan 2: SPA-шелл `packages/admin` (React/Vite/RR7/`*.module.scss`) +
+    `/login`/`/register` + app-shell + `/settings` с токеном. Ревью пройдено.
   - [ ] sub-plan 3: страница списка переговоров.
   - [ ] sub-plan 4: карточка встречи (транскрипт; заглушка анализа).
   - Лендинг — отдельно, позже.
