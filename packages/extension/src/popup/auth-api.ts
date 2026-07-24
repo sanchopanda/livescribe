@@ -14,13 +14,25 @@ async function jsonOrNull(res: Response): Promise<any> {
   }
 }
 
-// auto-detect: cabinet session → extension token
+// auto-detect: cabinet session → extension token.
+// Best-effort: cross-origin credentialed fetch from an extension may be blocked or hang,
+// so we cap each request with a short timeout and fall back to the login form on any failure.
+async function fetchWithTimeout(url: string, init: RequestInit, ms = 2500): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function tryAutoDetect(): Promise<Account | null> {
   try {
-    const me = await fetch(`${__CABINET_URL__}/api/auth/me`, { credentials: 'include' });
+    const me = await fetchWithTimeout(`${__CABINET_URL__}/api/auth/me`, { credentials: 'include' });
     if (!me.ok) return null;
     const meBody = await jsonOrNull(me);
-    const tok = await fetch(`${__CABINET_URL__}/api/auth/extension-token`, {
+    const tok = await fetchWithTimeout(`${__CABINET_URL__}/api/auth/extension-token`, {
       method: 'POST',
       credentials: 'include',
     });
