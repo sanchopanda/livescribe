@@ -264,6 +264,12 @@ async function sendToOffscreen(message: object): Promise<any> {
   }
 }
 
+async function getSkriboToken(): Promise<string | undefined> {
+  const { skriboToken } = await chrome.storage.local.get('skriboToken');
+  const t = typeof skriboToken === 'string' ? skriboToken.trim() : '';
+  return t || undefined;
+}
+
 async function recoverPerTrackSession(reason: string): Promise<void> {
   if (perTrackRecoveryInProgress) return;
   if (currentAudioMode !== 'per-track' || !activeRecordingStartMessage) return;
@@ -289,6 +295,7 @@ async function recoverPerTrackSession(reason: string): Promise<void> {
       language: activeRecordingStartMessage.language || 'ru-RU',
       platform: activeRecordingStartMessage.platform,
       audioMode: 'per-track',
+      token: await getSkriboToken(),
     });
 
     if (startResponse?.error) {
@@ -376,12 +383,13 @@ function startRecordingOffscreen(message: any, sendResponse: (response: any) => 
           return;
         }
         
-        setTimeout(() => {
+        setTimeout(async () => {
           sendToOffscreen({
             type: 'OFFSCREEN_START_SESSION',
             language: message.language || 'ru-RU',
             platform: message.platform,
             audioMode,
+            token: await getSkriboToken(),
           })
             .then((sessionResponse) => {
               if (sessionResponse && sessionResponse.error) {
@@ -425,12 +433,13 @@ function startRecordingOffscreen(message: any, sendResponse: (response: any) => 
 
         sendToOffscreen({ type: 'OFFSCREEN_CONNECT' })
           .then(() => {
-            setTimeout(() => {
+            setTimeout(async () => {
               sendToOffscreen({
                 type: 'OFFSCREEN_START_SESSION',
                 language: message.language || 'ru-RU',
                 platform: message.platform,
                 audioMode,
+                token: await getSkriboToken(),
               })
                 .then(() => {
                   setTimeout(() => {

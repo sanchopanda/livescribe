@@ -414,6 +414,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         language: message.language || 'ru-RU',
         platform: message.platform,
         audioMode: message.audioMode,
+        token: message.token,
       } as any);
       sendResponse({ success: true });
       return true;
