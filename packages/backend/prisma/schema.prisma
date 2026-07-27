@@ -14,6 +14,7 @@ model User {
   createdAt    DateTime        @default(now())
   meetings     Meeting[]
   tokens       PersonalToken[]
+  passwordResetTokens PasswordResetToken[]
 }
 
 model Meeting {
@@ -62,4 +63,15 @@ model PersonalToken {
   label      String?
   createdAt  DateTime  @default(now())
   lastUsedAt DateTime?
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  @@index([userId])
 }
