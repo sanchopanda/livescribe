@@ -3,6 +3,8 @@
 
 import { getPlatformCapabilities, resolveAudioMode } from '../platform/audio-mode-capabilities';
 
+declare const __API_URL__: string;
+
 console.log('LiveScribe background service worker initialized');
 
 type RecordingState = 'idle' | 'recording' | 'error';
@@ -946,6 +948,31 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       })
       .catch((err) => sendResponse({ error: err.message }));
     return true;
+  }
+
+  if (message.type === 'LIVE_SUMMARY') {
+    (async () => {
+      const token = await getSkriboToken();
+      if (!token) { sendResponse({ error: 'not_authed' }); return; }
+      try {
+        const res = await fetch(`${__API_URL__}/api/live-summary`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+          body: JSON.stringify({ transcript: typeof message.transcript === 'string' ? message.transcript : '' }),
+        });
+        if (!res.ok) {
+          let code = `http_${res.status}`;
+          try { const b = await res.json(); if (b?.error) code = b.error; } catch { /* ignore */ }
+          sendResponse({ error: code });
+          return;
+        }
+        const data = (await res.json()) as { bullets?: unknown };
+        sendResponse({ bullets: Array.isArray(data?.bullets) ? data.bullets : [] });
+      } catch {
+        sendResponse({ error: 'network' });
+      }
+    })();
+    return true; // async response
   }
 
   return false;

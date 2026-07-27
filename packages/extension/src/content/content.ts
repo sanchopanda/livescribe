@@ -142,6 +142,52 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
+function collectTranscriptText(): string {
+  const lines = transcriptReplicas.map((r) => `${r.speaker}: ${r.text}`);
+  if (partialReplica && partialReplica.text.trim()) {
+    lines.push(`${partialReplica.speaker}: ${partialReplica.text.trim()}`);
+  }
+  return lines.join('\n').trim();
+}
+
+function summaryErrorText(code: string): string {
+  if (code === 'not_authed') return 'Войдите в расширении, чтобы получить саммари';
+  if (code === 'analysis_unavailable' || code === 'http_503') return 'Саммари пока не настроено';
+  if (code === 'no_transcript' || code === 'http_400') return 'Нет транскрипта для саммари';
+  return 'Не удалось получить саммари. Попробуйте ещё раз';
+}
+
+function renderSummary(panel: HTMLElement, bullets: string[]): void {
+  if (bullets.length === 0) {
+    panel.innerHTML = '<div style="color:#6b7280; font-size:11px;">Пока нечего резюмировать.</div>';
+    return;
+  }
+  panel.innerHTML =
+    '<ul style="margin:0; padding-left:16px; line-height:1.5;">' +
+    bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join('') +
+    '</ul>';
+}
+
+function requestLiveSummary(): void {
+  const panel = document.getElementById('skribo-summary-panel');
+  const btn = document.getElementById('skribo-summary-btn') as HTMLButtonElement | null;
+  if (!panel) return;
+  const transcript = collectTranscriptText();
+  panel.style.display = 'block';
+  if (!transcript) {
+    panel.innerHTML = '<div style="color:#6b7280; font-size:11px;">Нет транскрипта для саммари</div>';
+    return;
+  }
+  panel.innerHTML = '<div style="color:#6b7280; font-size:11px;">Готовим саммари…</div>';
+  if (btn) btn.disabled = true;
+  chrome.runtime.sendMessage({ type: 'LIVE_SUMMARY', transcript }, (response) => {
+    if (btn) { btn.disabled = false; btn.textContent = 'Обновить саммари'; }
+    if (chrome.runtime.lastError || !response) { panel.innerHTML = `<div style="color:#b91c1c; font-size:11px;">${escapeHtml(summaryErrorText('network'))}</div>`; return; }
+    if (response.error) { panel.innerHTML = `<div style="color:#b91c1c; font-size:11px;">${escapeHtml(summaryErrorText(String(response.error)))}</div>`; return; }
+    renderSummary(panel, Array.isArray(response.bullets) ? response.bullets.map(String) : []);
+  });
+}
+
 function normalizeTrigger(w: string): string {
   return w.trim();
 }
@@ -818,6 +864,16 @@ function createUIWidget() {
         <div style="font-size: 11px; color: #374151; font-weight: 600; margin-bottom: 4px;">Audio levels</div>
         <div id="livescribe-audio-levels-content"></div>
       </div>
+      <button id="skribo-summary-btn" style="
+        width: 100%; padding: 6px 12px; margin-bottom: 8px;
+        background: #0d9488; color: #fff; border: none; border-radius: 4px;
+        cursor: pointer; font-size: 12px; font-weight: 500;
+      ">Саммари встречи</button>
+      <div id="skribo-summary-panel" style="
+        display: none; margin-bottom: 8px; padding: 8px;
+        background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 4px;
+        font-size: 12px; color: #134e4a;
+      "></div>
       <div id="livescribe-transcript" style="
         flex: 1;
         padding: 8px;
@@ -866,6 +922,7 @@ function createUIWidget() {
   document.getElementById('livescribe-start')?.addEventListener('click', handleStart);
   document.getElementById('livescribe-stop')?.addEventListener('click', handleStop);
   document.getElementById('livescribe-reset')?.addEventListener('click', handleReset);
+  document.getElementById('skribo-summary-btn')?.addEventListener('click', requestLiveSummary);
   document.getElementById('skribo-trigger-add')?.addEventListener('click', () => {
     const input = document.getElementById('skribo-trigger-input') as HTMLInputElement | null;
     if (!input) return;
