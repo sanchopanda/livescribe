@@ -126,16 +126,28 @@
   (forgot 200, но письмо не уходит) — фичи мягко выключены до добавления кредов в
   `/root/skribo/packages/backend/.env` + рестарт.
 
+## Сделано (последнее, LS-10)
+
+- **LS-10 — ребренд идентификаторов пакетов `@livescribe/*` → `@skribo/*`.** Атомарный проход:
+  5 имён `package.json` (корень `livescribe`→`skribo` + 4 пакета), 11 импортов `@skribo/shared`,
+  алиасы сборки (extension tsconfig/vite, admin vite), `package-lock.json` (перегенерён), живые
+  доки (deploy-скилл, AGENTS.md, README.md, backlog). Коммит `55e3e00`. Проверка: `type-check` +
+  `build` (все воркспейсы) + 20 бэк-тестов зелёные; `@livescribe` в коде/конфигах/живых доках не
+  осталось. **Рантайм не тронут** (DOM-id `livescribe-*`, ключи `localStorage`, лог-префиксы
+  `[LiveScribe]`, MAIN-world-маркеры — на месте, ренейм — отдельный follow-up). Ревью (spec ✅,
+  Approved). Прод-поведение не меняется (идентификаторы — build-time), редеплой не обязателен.
+
 ## Следующее
 
 - Добавить на сервер `OPENROUTER_API_KEY` и SMTP-креды (+`APP_URL`) → рестарт → живая проверка
   анализа/саммари/сброса пароля.
-- Или новая фича из бэклога (LS-01/02 платформы, LS-05 упаковка, LS-13 self-host STT).
-- Опц. follow-up: LS-14 desktop-нотификация; LS-12 верификация email + rate-limit.
+- Или новая фича из бэклога (LS-05 упаковка, LS-04 reconnect UX, LS-01/02 платформы, LS-13 self-host STT).
+- Опц. follow-up: рантайм-ребренд `livescribe-*` (DOM/storage/логи); LS-14 desktop-нотификация;
+  LS-12 верификация email + rate-limit; ренейм GitHub-репо `livescribe`→`skribo`.
 
 ## Задача в работе
 
-- Нет (LS-12 закрыт, задеплоен). `main` запушен в `origin` (`52797bd`).
+- Нет (LS-10 закрыт). Коммиты LS-10 в `origin` не запушены.
 
 ## Деплой кабинета (когда дойдём)
 
