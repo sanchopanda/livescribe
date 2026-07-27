@@ -85,3 +85,13 @@
 .error {
   color: #dc2626;
 }
+
+.summary { line-height: 1.55; margin-bottom: 12px; white-space: pre-wrap; }
+.subTitle { font-size: 13px; font-weight: 600; margin: 8px 0 4px; }
+.actionItems { margin: 0 0 12px; padding-left: 18px; line-height: 1.5;
+  li { margin-bottom: 4px; } }
+.analyzeBtn {
+  padding: 8px 14px; background: #0d9488; color: #fff; border: none; border-radius: 6px;
+  font-size: 13px; font-weight: 500; cursor: pointer;
+  &:disabled { opacity: 0.6; cursor: default; }
+}

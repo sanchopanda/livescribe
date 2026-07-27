@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import type { MeetingDetailDTO } from '@livescribe/shared';
-import { getMeeting } from '../api';
+import type { MeetingDetailDTO, AnalysisDTO } from '@livescribe/shared';
+import { getMeeting, analyzeMeeting } from '../api';
 import { formatDate, formatDuration, platformLabel } from '../lib/format';
 import styles from './MeetingDetailPage.module.scss';
 
@@ -11,14 +11,36 @@ export function MeetingDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [meeting, setMeeting] = useState<MeetingDetailDTO | null>(null);
   const [status, setStatus] = useState<Status>('loading');
+  const [analysis, setAnalysis] = useState<AnalysisDTO | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
     setStatus('loading');
     getMeeting(id)
-      .then((m) => { setMeeting(m); setStatus('ready'); })
+      .then((m) => { setMeeting(m); setAnalysis(m.analysis); setStatus('ready'); })
       .catch((err) => setStatus((err as Error).message === 'not_found' ? 'notfound' : 'error'));
   }, [id]);
+
+  async function runAnalysis() {
+    if (!id) return;
+    setAnalyzing(true);
+    setAnalysisError(null);
+    try {
+      const a = await analyzeMeeting(id);
+      setAnalysis(a);
+    } catch (e) {
+      const code = (e as Error).message;
+      setAnalysisError(
+        code === 'analysis_unavailable' ? 'Анализ недоступен: не настроен LLM-ключ.'
+          : code === 'no_transcript' ? 'Нет транскрипта для анализа.'
+          : 'Не удалось проанализировать. Попробуйте ещё раз.'
+      );
+    } finally {
+      setAnalyzing(false);
+    }
+  }
 
   if (status === 'loading') return <div className={styles.page}><p className="muted">Загрузка…</p></div>;
   if (status === 'notfound') return <div className={styles.page}><p className="muted">Встреча не найдена.</p><Link to="/">← К списку</Link></div>;
@@ -53,11 +75,32 @@ export function MeetingDetailPage() {
         </section>
         <aside className={styles.analysis}>
           <h2 className={styles.sectionTitle}>Анализ</h2>
-          {meeting.analysis?.summary ? (
-            <p>{meeting.analysis.summary}</p>
+          {analysis?.summary ? (
+            <>
+              <p className={styles.summary}>{analysis.summary}</p>
+              {analysis.actionItems && analysis.actionItems.length > 0 && (
+                <>
+                  <h3 className={styles.subTitle}>Задачи</h3>
+                  <ul className={styles.actionItems}>
+                    {analysis.actionItems.map((it, i) => (
+                      <li key={i}>{it.owner ? <strong>{it.owner}: </strong> : null}{it.text}</li>
+                    ))}
+                  </ul>
+                </>
+              )}
+              <button className={styles.analyzeBtn} onClick={runAnalysis} disabled={analyzing}>
+                {analyzing ? 'Анализируем…' : 'Перегенерировать'}
+              </button>
+            </>
           ) : (
-            <p className="muted">Анализ появится позже.</p>
+            <>
+              <p className="muted">Анализа пока нет.</p>
+              <button className={styles.analyzeBtn} onClick={runAnalysis} disabled={analyzing}>
+                {analyzing ? 'Анализируем…' : 'Проанализировать'}
+              </button>
+            </>
           )}
+          {analysisError && <p className={styles.error}>{analysisError}</p>}
         </aside>
       </div>
     </div>
