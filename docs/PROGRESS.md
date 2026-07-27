@@ -114,16 +114,28 @@
   - ⚠️ **Деплой:** SMTP-креды (`SMTP_*`) + `APP_URL` в prod-`.env` + `prisma migrate deploy`; без
     SMTP forgot всё равно 200 (письмо не уходит). Живой email-флоу — за пользователем/деплоем.
 
+## Деплой (2026-07-27)
+
+- **LS-09 (A+B) + LS-12 задеплоены на прод** (`52797bd`). rsync → сборка shared+backend
+  (nodemailer установлен) → `prisma migrate deploy` (применена `20260727143750_password_reset_token`)
+  → рестарт `skribo-backend` → сборка admin → `/var/www/skribo-admin`. Пост-проверки зелёные:
+  `wss://api.skribo.ru/ws` 101; `app.skribo.ru/login` 200; `/reset` (SPA-fallback) 200;
+  `/api/auth/me` 401; `/api/auth/forgot` 200; `/api/auth/reset` (левый токен) 400;
+  `/api/live-summary` (без токена) 401.
+- ⚠️ **Ключи ещё не заданы:** `OPENROUTER_API_KEY` (анализ/саммари → 503) и `SMTP_*`+`APP_URL`
+  (forgot 200, но письмо не уходит) — фичи мягко выключены до добавления кредов в
+  `/root/skribo/packages/backend/.env` + рестарт.
+
 ## Следующее
 
-- **Деплой LS-09 (A+B) + LS-12** на сервер: `OPENROUTER_API_KEY`, SMTP-креды, `APP_URL`,
-  `prisma migrate deploy`, рестарт — и живая проверка анализа/саммари/сброса пароля.
+- Добавить на сервер `OPENROUTER_API_KEY` и SMTP-креды (+`APP_URL`) → рестарт → живая проверка
+  анализа/саммари/сброса пароля.
 - Или новая фича из бэклога (LS-01/02 платформы, LS-05 упаковка, LS-13 self-host STT).
 - Опц. follow-up: LS-14 desktop-нотификация; LS-12 верификация email + rate-limit.
 
 ## Задача в работе
 
-- Нет (LS-12 закрыт). Коммиты LS-09B + LS-12 в `origin` не запушены.
+- Нет (LS-12 закрыт, задеплоен). `main` запушен в `origin` (`52797bd`).
 
 ## Деплой кабинета (когда дойдём)
 
