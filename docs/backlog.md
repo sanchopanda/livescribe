@@ -49,10 +49,10 @@
     (саммари + action items, upsert `Analysis`, коды 503/404/400/502), панель в `MeetingDetailPage`
     (кнопка «Проанализировать»/«Перегенерировать»). Финальное ревью (opus) → merge. ⚠️ **Живая
     проверка + `OPENROUTER_API_KEY` на сервере — при деплое** (без ключа фича мягко выключена, 503).
-  - [ ] **B — live-саммари в расширении** (быстрая модель `LLM_MODEL_LIVE`, эфемерно, кнопка в
-    виджете; токен-авторизованный `POST /api/live-summary`, fetch через service worker) — *в работе*.
-    Спека `docs/superpowers/specs/2026-07-27-extension-live-summary-design.md`, план
-    `docs/superpowers/plans/2026-07-27-extension-live-summary.md`.
+  - [x] **B — live-саммари в расширении.** Кнопка «Саммари встречи» в виджете → тезисы (3-6) по
+    текущему миту; токен-авторизованный `POST /api/live-summary` (`LLM_MODEL_LIVE`, эфемерно),
+    cross-origin fetch через service worker. Финальное ревью (opus) → merge. ⚠️ Живая проверка +
+    `OPENROUTER_API_KEY` — при деплое (без ключа — «Саммари пока не настроено», 503).
   - Дальше: ключевые моменты/темы, поиск по анализу, авто-анализ при завершении встречи.
 - [ ] LS-13 — **Self-host RU-STT (GigaAM / Parakeet)** — *плановая, gated на триггеры*
   (см. ADR-0005: качество RU / 152-ФЗ / объём / офлайн). Приоритет GigaAM-v3 (MIT, лучший
