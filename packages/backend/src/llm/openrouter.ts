@@ -53,9 +53,15 @@ export async function chatJson(args: ChatArgs): Promise<unknown> {
   try {
     return await doCall();
   } catch (err) {
-    if (err instanceof SyntaxError) {
-      return await doCall('Ответь СТРОГО валидным JSON-объектом без markdown-обёрток.');
+    if (!(err instanceof SyntaxError)) {
+      if (err instanceof LlmError) throw err;
+      throw new LlmError((err as Error).message || 'openrouter_failed');
     }
+  }
+
+  try {
+    return await doCall('Ответь СТРОГО валидным JSON-объектом без markdown-обёрток.');
+  } catch (err) {
     if (err instanceof LlmError) throw err;
     throw new LlmError((err as Error).message || 'openrouter_failed');
   }

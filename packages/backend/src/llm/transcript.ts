@@ -20,7 +20,8 @@ export function buildTranscriptText(segments: TranscriptSeg[]): string {
     lines.push(line);
     total += line.length + 1;
   }
-  let out = lines.join('\n');
-  if (truncated) out += '\n[транскрипт усечён]';
-  return out;
+  if (truncated) {
+    return lines.length ? `${lines.join('\n')}\n[транскрипт усечён]` : '[транскрипт усечён]';
+  }
+  return lines.join('\n');
 }
