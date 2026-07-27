@@ -120,10 +120,18 @@ export function registerAuthRoutes(server: FastifyInstance) {
     }
 
     const newHash = await hashPassword(password);
-    await prisma.$transaction([
-      prisma.user.update({ where: { id: record.userId }, data: { passwordHash: newHash } }),
-      prisma.passwordResetToken.update({ where: { id: record.id }, data: { usedAt: new Date() } }),
-    ]);
+    // Atomic single-use: only the transaction that flips usedAt (conditional on it
+    // still being null) may change the password — guards against concurrent double-use.
+    const applied = await prisma.$transaction(async (tx) => {
+      const marked = await tx.passwordResetToken.updateMany({
+        where: { id: record.id, usedAt: null },
+        data: { usedAt: new Date() },
+      });
+      if (marked.count === 0) return false;
+      await tx.user.update({ where: { id: record.userId }, data: { passwordHash: newHash } });
+      return true;
+    });
+    if (!applied) return reply.code(400).send({ error: 'invalid_or_expired' });
     return { ok: true };
   });
 }
