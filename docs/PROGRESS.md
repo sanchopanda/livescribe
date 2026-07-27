@@ -54,13 +54,11 @@
   негативные кейсы), ровно один `label='extension'`-токен после повторных вызовов, и
   токен → WS `start` → `Meeting` → `GET /api/meetings` — тот же id встречи от записи до
   списка. Отчёт: `.superpowers/sdd/task-3-report.md`.
-  - ⚠️ **Не проверено (нужен человек):** рендер попапа внутри реального Chrome и
-    кросс-доменный авто-подхват cookie (`fetch(credentials:'include')` из
-    `chrome-extension://` на `app.skribo.ru`) — среда агента не может загрузить unpacked
-    расширение. Ручная проверка: собрать
-    `API_URL=https://api.skribo.ru CABINET_URL=https://app.skribo.ru WS_URL=wss://api.skribo.ru/ws npm run build:extension`,
-    загрузить `packages/extension/dist` в `chrome://extensions`, открыть попап (без сессии
-    кабинета → форма логина; с сессией кабинета в другой вкладке → авто-вход).
+  - ✅ **Проверено в реальном Chrome:** вход в попапе работает (email+пароль). Фиксы по пути:
+    добавлен permission `"storage"` (без него попап висел на «Проверяем аккаунт»); пересобран+
+    перезапущен прод-бэкенд (эндпоинты `extension-login/token` отвечали 404 — старая сборка).
+    Кросс-доменный авто-подхват cookie в Chrome не срабатывает (ожидаемо) → рабочий путь —
+    форма логина. LS-11 закрыт.
 
 ## Следующее
 
@@ -85,9 +83,9 @@
 - Заполнение `Meeting.title` + поиск (в LS-09).
 - Почистить `localhost` из manifest host_permissions (LS-05); redundant
   `destroyParticipantProviders`; убрать `(message as any)`-касты.
-- 🔒 Сервер: сменить засветившийся root-пароль (панель Beget), отключить парольный SSH;
-  задать `NODE_ENV=production`/`JWT_SECRET`/`DATABASE_URL`/`WEB_ORIGIN` в серверном `.env`
-  и провижн Postgres перед `prisma migrate deploy` (см. обновлённый `deploy`-скилл).
+- 🔒 Сервер: парольный SSH **отключён** (`PasswordAuthentication no`, root — только по ключу);
+  засветившийся пароль для SSH бесполезен. Опц.: сбросить его и в панели Beget (для консоли).
+  Прод-`.env` (NODE_ENV/JWT_SECRET/DATABASE_URL/WEB_ORIGIN) и Postgres+миграции — сделаны при деплое.
 
 ## Блокеры
 
