@@ -31,6 +31,14 @@ function activeManifest() {
   m.content_scripts = m.content_scripts
     .filter((cs: any) => !cs.js.some((j: string) => j.includes('platform-research')))
     .map((cs: any) => ({ ...cs, matches: cs.matches.filter((p: string) => !p.includes('youtube')) }));
+  // Narrow web_accessible_resources away from <all_urls> to the supported hosts,
+  // so the worklet isn't exposed to every site (store review flags <all_urls> here too).
+  if (Array.isArray((m as any).web_accessible_resources)) {
+    (m as any).web_accessible_resources = (m as any).web_accessible_resources.map((r: any) => ({
+      ...r,
+      matches: m.host_permissions.filter((p: string) => !p.includes('skribo.ru')),
+    }));
+  }
   return m;
 }
 
