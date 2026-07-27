@@ -18,3 +18,4 @@ export interface MeetingDetailDTO extends MeetingDTO {
 export interface PersonalTokenDTO {
   id: string; label: string | null; createdAt: string; lastUsedAt: string | null; token?: string;
 }
+export interface LiveSummaryDTO { bullets: string[]; }
