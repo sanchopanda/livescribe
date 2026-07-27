@@ -45,6 +45,8 @@ let transcriptReplicas: TranscriptReplica[] = [];
 let partialReplica: TranscriptReplica | null = null;
 let lastFinalTimestamp: number | null = null;
 
+let triggers: string[] = [];
+
 const REPLICA_MERGE_PAUSE_MS = 3000;
 
 function clearTranscriptState(): void {
@@ -100,6 +102,70 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
+function normalizeTrigger(w: string): string {
+  return w.trim();
+}
+
+async function loadTriggers(): Promise<void> {
+  try {
+    const { skriboTriggers } = await chrome.storage.local.get('skriboTriggers');
+    triggers = Array.isArray(skriboTriggers) ? skriboTriggers.filter((t) => typeof t === 'string') : [];
+  } catch {
+    triggers = [];
+  }
+}
+
+async function saveTriggers(): Promise<void> {
+  try {
+    await chrome.storage.local.set({ skriboTriggers: triggers });
+  } catch {
+    /* ignore */
+  }
+}
+
+function addTrigger(raw: string): void {
+  const w = normalizeTrigger(raw);
+  if (!w) return;
+  if (triggers.some((t) => t.toLowerCase() === w.toLowerCase())) return;
+  triggers.push(w);
+  void saveTriggers();
+  renderTriggers();
+}
+
+function removeTrigger(w: string): void {
+  triggers = triggers.filter((t) => t !== w);
+  void saveTriggers();
+  renderTriggers();
+}
+
+function renderTriggers(): void {
+  const list = document.getElementById('skribo-triggers-list');
+  if (!list) return;
+
+  list.innerHTML = triggers
+    .map(
+      (word) => `
+        <span style="
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 2px 6px;
+          background: #e5e7eb;
+          color: #374151;
+          border-radius: 12px;
+          font-size: 11px;
+        ">${escapeHtml(word)}<span class="skribo-trigger-remove" data-word="${escapeHtml(word)}" style="cursor: pointer; color: #6b7280; font-weight: 700;">&times;</span></span>
+      `
+    )
+    .join('');
+
+  list.querySelectorAll('.skribo-trigger-remove').forEach((el) => {
+    el.addEventListener('click', () => {
+      const word = el.getAttribute('data-word');
+      if (word) removeTrigger(word);
+    });
+  });
+}
 
 function startSpeakerTracking(): void {
   stopSpeakerTracking();
@@ -681,6 +747,23 @@ function createUIWidget() {
           <span id="livescribe-deepgram-seconds" style="font-variant-numeric: tabular-nums; font-weight: 600;">00:00</span>
         </div>
       </div>
+      <div style="margin-bottom: 8px;">
+        <div style="font-size: 11px; color: #374151; font-weight: 600; margin-bottom: 4px;">Триггеры</div>
+        <div style="display: flex; gap: 4px;">
+          <input id="skribo-trigger-input" placeholder="Добавить слово…" style="flex: 1; padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px;">
+          <button id="skribo-trigger-add" style="
+            padding: 6px 10px;
+            background: #10b981;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+          ">+</button>
+        </div>
+        <div id="skribo-triggers-list" style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px;"></div>
+      </div>
       <div id="livescribe-ws-recovery" style="
         margin-bottom: 8px;
         padding: 6px 8px;
@@ -743,6 +826,18 @@ function createUIWidget() {
   document.getElementById('livescribe-start')?.addEventListener('click', handleStart);
   document.getElementById('livescribe-stop')?.addEventListener('click', handleStop);
   document.getElementById('livescribe-reset')?.addEventListener('click', handleReset);
+  document.getElementById('skribo-trigger-add')?.addEventListener('click', () => {
+    const input = document.getElementById('skribo-trigger-input') as HTMLInputElement | null;
+    if (!input) return;
+    addTrigger(input.value);
+    input.value = '';
+  });
+  document.getElementById('skribo-trigger-input')?.addEventListener('keydown', (e) => {
+    if ((e as KeyboardEvent).key !== 'Enter') return;
+    const input = e.target as HTMLInputElement;
+    addTrigger(input.value);
+    input.value = '';
+  });
   document.getElementById('livescribe-minimize')?.addEventListener('click', toggleMinimize);
   document.getElementById('livescribe-close')?.addEventListener('click', closeWidget);
   document.getElementById('livescribe-language')?.addEventListener('change', (e) => {
@@ -764,6 +859,7 @@ function createUIWidget() {
   renderWsRecoveryIndicator();
   renderAudioLevels();
   requestCurrentStatusAndMetrics();
+  void loadTriggers().then(renderTriggers);
 }
 
 // Setup drag and drop
