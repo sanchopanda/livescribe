@@ -53,7 +53,7 @@ export function registerMeetingRoutes(server: FastifyInstance) {
       include: { segments: { where: { isFinal: true }, orderBy: { tsMs: 'asc' } } },
     });
     if (!m) return reply.code(404).send({ error: 'not_found' });
-    if (m.segments.length === 0) return reply.code(400).send({ error: 'no_transcript' });
+    if (!m.segments.some((s) => s.text?.trim())) return reply.code(400).send({ error: 'no_transcript' });
 
     let result;
     try {
