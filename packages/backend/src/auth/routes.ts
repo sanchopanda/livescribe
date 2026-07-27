@@ -2,8 +2,12 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { RegisterRequest, LoginRequest, AuthResponse } from '@livescribe/shared';
 import { prisma } from '../db/prisma.js';
 import { hashPassword, verifyPassword } from './passwords.js';
-import { signJwt, generateToken } from './tokens.js';
+import { signJwt, generateToken, hashToken } from './tokens.js';
 import { requireUser } from './guard.js';
+import { getAppUrl } from '../email/config.js';
+import { sendPasswordResetEmail } from '../email/mailer.js';
+
+const RESET_TTL_MS = 60 * 60 * 1000;
 
 function setSession(reply: FastifyReply, userId: string) {
   reply.setCookie('skribo_session', signJwt(userId), {
@@ -83,5 +87,43 @@ export function registerAuthRoutes(server: FastifyInstance) {
       return reply.code(401).send({ error: 'invalid_credentials' });
     const token = await getOrRotateExtensionToken(user.id);
     return { user: { id: user.id, email: user.email, name: user.name }, token };
+  });
+
+  server.post('/api/auth/forgot', async (req, reply) => {
+    const { email } = (req.body ?? {}) as { email?: unknown };
+    if (typeof email !== 'string' || !email.trim()) return reply.code(400).send({ error: 'invalid_request' });
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+    if (user) {
+      const { raw, hash } = generateToken();
+      await prisma.passwordResetToken.create({
+        data: { userId: user.id, tokenHash: hash, expiresAt: new Date(Date.now() + RESET_TTL_MS) },
+      });
+      const resetUrl = `${getAppUrl()}/reset?token=${raw}`;
+      try {
+        await sendPasswordResetEmail(user.email, resetUrl);
+      } catch (err) {
+        req.log.error({ err }, 'failed to send reset email');
+      }
+    }
+    return { ok: true };
+  });
+
+  server.post('/api/auth/reset', async (req, reply) => {
+    const { token, password } = (req.body ?? {}) as { token?: unknown; password?: unknown };
+    if (typeof token !== 'string' || !token.trim()) return reply.code(400).send({ error: 'invalid_or_expired' });
+    if (typeof password !== 'string' || password.length < 8) return reply.code(400).send({ error: 'weak_password' });
+
+    const record = await prisma.passwordResetToken.findUnique({ where: { tokenHash: hashToken(token.trim()) } });
+    if (!record || record.usedAt || record.expiresAt.getTime() < Date.now()) {
+      return reply.code(400).send({ error: 'invalid_or_expired' });
+    }
+
+    const newHash = await hashPassword(password);
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: record.userId }, data: { passwordHash: newHash } }),
+      prisma.passwordResetToken.update({ where: { id: record.id }, data: { usedAt: new Date() } }),
+    ]);
+    return { ok: true };
   });
 }
