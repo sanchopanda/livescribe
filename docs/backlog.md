@@ -40,12 +40,11 @@
   (`.superpowers/sdd/task-3-report.md`). ⚠️ Рендер попапа в реальном Chrome и кросс-доменный
   авто-подхват cookie — **ждут ручной проверки пользователем** (среда агента не может
   загрузить unpacked-расширение); шаги проверки — в отчёте и `docs/PROGRESS.md`.
-- [ ] LS-12 — **Email-инфраструктура и восстановление пароля.** Сброс пароля по email через
-  SMTP (nodemailer, провайдер в env): модель `PasswordResetToken` (хеш, 1ч, одноразовый),
-  `POST /api/auth/forgot` (всегда 200) + `/api/auth/reset`, страницы кабинета `/forgot`+`/reset`.
-  Верификация email при регистрации — вне объёма (follow-up). Спека
-  `docs/superpowers/specs/2026-07-27-password-reset-design.md`, план
-  `docs/superpowers/plans/2026-07-27-password-reset.md`. *В работе.*
+- [x] LS-12 — **Восстановление пароля по email.** SMTP (nodemailer, провайдер в env, ADR-0007):
+  модель `PasswordResetToken` (хеш, 1ч, одноразовый — атомарно), `POST /api/auth/forgot`
+  (всегда 200, без энумерации) + `/api/auth/reset`, страницы кабинета `/forgot`+`/reset` + ссылка
+  на логине. Финальное ревью (opus) → merge. ⚠️ Деплой: SMTP-креды + `APP_URL` в prod-`.env` +
+  `prisma migrate deploy`. Верификация email при регистрации + rate-limit — follow-up.
 - [ ] LS-09 — **Анализ переговоров.** LLM (OpenRouter, ADR-0006) поверх транскриптов. Под-проекты:
   - [x] **A — анализ в кабинете.** LLM-ядро `packages/backend/src/llm/` (OpenRouter-клиент +
     сборка транскрипта + analysis-профиль, юнит-тесты), `POST /api/meetings/:id/analysis`

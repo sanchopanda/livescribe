@@ -26,6 +26,12 @@ description: >-
   дефолт `anthropic/claude-haiku-4.5`). Ключ **опционален**: без него сервис стартует, но
   `POST /api/meetings/:id/analysis` отвечает `503`, а кабинет показывает «анализ не настроен».
   После добавления ключа — `systemctl restart skribo-backend`.
+- **Email / сброс пароля (LS-12):** опц. SMTP в `.env` — `SMTP_HOST`, `SMTP_PORT` (дефолт 587),
+  `SMTP_SECURE` (bool), `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` (напр. `Skribo <no-reply@skribo.ru>`),
+  `APP_URL=https://app.skribo.ru` (база для ссылок сброса). Без SMTP `POST /api/auth/forgot` всё
+  равно `200`, но письмо не уходит. LS-12 добавляет миграцию `PasswordResetToken` — на деплое
+  выполнить `prisma migrate deploy` (шаг сборки бэкенда) до рестарта; зависимость `nodemailer`
+  ставится обычным `npm ci`/сборкой на сервере.
 - TLS/reverse-proxy: **Caddy**, `/etc/caddy/Caddyfile` (`api.skribo.ru` → `127.0.0.1:3001`),
   авто-Let's Encrypt. Слушает 80/443.
 - Домен: `api.skribo.ru` (A-запись на reg.ru, NS `ns*.reg.ru`).
