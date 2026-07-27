@@ -52,6 +52,12 @@
   реальных звонках → GPU-сайзинг/цена → провайдер `gigaam` → A/B vs Deepgram. Ресёрч:
   `docs/research/2026-07-26-stt-models-parakeet-gigaam.md`.
 
+- [ ] LS-14 — **Триггер-слова → подсветка в расширении.** Пользователь задаёт триггер-слова в
+  виджете; финальная реплика с триггером (по границе слова, регистронезависимо) подсвечивается
+  + виджет коротко пульсирует. Клиентское, без бэкенда/LLM. Спека
+  `docs/superpowers/specs/2026-07-27-extension-trigger-highlight-design.md`, план
+  `docs/superpowers/plans/2026-07-27-extension-trigger-highlight.md`.
+
 ## Фаза: покрытие платформ
 
 - [ ] LS-01 — **Zoom per-track.** MAIN-world WebRTC-хук, per-track transcriber и speaker-DOM
