@@ -151,7 +151,7 @@ function collectTranscriptText(): string {
 }
 
 function summaryErrorText(code: string): string {
-  if (code === 'not_authed') return 'Войдите в расширении, чтобы получить саммари';
+  if (code === 'not_authed' || code === 'unauthorized' || code === 'http_401') return 'Войдите в расширении, чтобы получить саммари';
   if (code === 'analysis_unavailable' || code === 'http_503') return 'Саммари пока не настроено';
   if (code === 'no_transcript' || code === 'http_400') return 'Нет транскрипта для саммари';
   return 'Не удалось получить саммари. Попробуйте ещё раз';
