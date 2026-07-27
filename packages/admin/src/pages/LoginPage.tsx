@@ -57,6 +57,9 @@ export function LoginPage() {
           {busy ? 'Вход…' : 'Войти'}
         </Button>
         <div className={styles.switch}>
+          <Link to="/forgot">Забыли пароль?</Link>
+        </div>
+        <div className={styles.switch}>
           Нет аккаунта? <Link to="/register">Регистрация</Link>
         </div>
       </form>

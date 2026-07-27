@@ -18,6 +18,10 @@ export const getMe = () => req<AuthResponse>('/auth/me');
 export const login = (body: LoginRequest) => req<AuthResponse>('/auth/login', { method: 'POST', body: JSON.stringify(body) });
 export const register = (body: RegisterRequest) => req<AuthResponse>('/auth/register', { method: 'POST', body: JSON.stringify(body) });
 export const logout = () => req<{ ok: true }>('/auth/logout', { method: 'POST' });
+export const forgotPassword = (email: string) =>
+  req<{ ok: true }>('/auth/forgot', { method: 'POST', body: JSON.stringify({ email }) });
+export const resetPassword = (token: string, password: string) =>
+  req<{ ok: true }>('/auth/reset', { method: 'POST', body: JSON.stringify({ token, password }) });
 export const listTokens = () => req<PersonalTokenDTO[]>('/tokens');
 export const createToken = (label?: string) => req<PersonalTokenDTO>('/tokens', { method: 'POST', body: JSON.stringify({ label }) });
 export const deleteToken = (id: string) => req<{ ok: true }>(`/tokens/${id}`, { method: 'DELETE' });
