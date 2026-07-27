@@ -1,7 +1,7 @@
 import { chatJson, type ChatArgs } from './openrouter.js';
 import { getDetailedModel } from './config.js';
 import { buildTranscriptText, type TranscriptSeg } from './transcript.js';
-import type { ActionItem } from '@livescribe/shared';
+import type { ActionItem } from '@skribo/shared';
 
 export interface MeetingAnalysis { summary: string; actionItems: ActionItem[]; }
 

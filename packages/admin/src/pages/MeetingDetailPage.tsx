@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import type { MeetingDetailDTO, AnalysisDTO } from '@livescribe/shared';
+import type { MeetingDetailDTO, AnalysisDTO } from '@skribo/shared';
 import { getMeeting, analyzeMeeting } from '../api';
 import { formatDate, formatDuration, platformLabel } from '../lib/format';
 import styles from './MeetingDetailPage.module.scss';

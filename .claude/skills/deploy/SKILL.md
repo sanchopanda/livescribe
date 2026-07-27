@@ -71,8 +71,8 @@ ssh $SSHOPT root@45.147.176.79 '
   cd /root/skribo
   npm install --no-audit --no-fund
   find . -name "*.tsbuildinfo" -not -path "*/node_modules/*" -delete
-  npm run build --workspace=@livescribe/shared
-  npm run build --workspace=@livescribe/backend
+  npm run build --workspace=@skribo/shared
+  npm run build --workspace=@skribo/backend
 '
 ```
 
@@ -125,7 +125,7 @@ single-origin: статика SPA + прокси `/api` на бэкенд.
 ```bash
 ssh $SSHOPT root@45.147.176.79 '
   cd /root/skribo
-  npm run build --workspace=@livescribe/admin
+  npm run build --workspace=@skribo/admin
   mkdir -p /var/www/skribo-admin && rm -rf /var/www/skribo-admin/*
   cp -r packages/admin/dist/* /var/www/skribo-admin/
   chmod -R a+rX /var/www/skribo-admin; chmod a+rX /var/www
@@ -143,7 +143,7 @@ app.skribo.ru {
 ## ⚠️ Урок: при изменении бэкенда — пересобрать И перезапустить
 
 Правка кабинета (`admin`) НЕ обновляет бэкенд. Если менялся `packages/backend` (или `shared`),
-после rsync обязательно: `npm run build --workspace=@livescribe/shared && ... --workspace=@livescribe/backend`
+после rsync обязательно: `npm run build --workspace=@skribo/shared && ... --workspace=@skribo/backend`
 и `systemctl restart skribo-backend`. Иначе новые эндпоинты отвечают `404` (старый `dist/`),
 как было с `/api/auth/extension-login` — деплой кабинета обновил только `admin`, бэкенд остался
 старым. Проверка: `curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:3001/api/auth/extension-token` → `401`, не `404`.

@@ -1,5 +1,5 @@
 {
-  "name": "livescribe",
+  "name": "skribo",
   "version": "0.1.0",
   "private": true,
   "description": "Real-time video call transcription",
@@ -11,18 +11,18 @@
     "npm": ">=10.0.0"
   },
   "scripts": {
-    "dev:extension": "npm run dev --workspace=@livescribe/extension",
-    "dev:backend": "npm run dev --workspace=@livescribe/backend",
-    "dev:admin": "npm run dev --workspace=@livescribe/admin",
+    "dev:extension": "npm run dev --workspace=@skribo/extension",
+    "dev:backend": "npm run dev --workspace=@skribo/backend",
+    "dev:admin": "npm run dev --workspace=@skribo/admin",
     "dev": "concurrently --kill-others-on-fail --raw \"npm run dev:backend\" \"npm run dev:extension\"",
     "dev:stop": "pkill -f 'tsx watch' && pkill -f 'vite build' || true",
-    "build": "npm run build --workspace=@livescribe/shared && npm run build --workspace=@livescribe/backend && npm run build --workspace=@livescribe/extension",
-    "build:extension": "npm run build --workspace=@livescribe/extension",
-    "build:backend": "npm run build --workspace=@livescribe/backend",
-    "build:admin": "npm run build --workspace=@livescribe/admin",
+    "build": "npm run build --workspace=@skribo/shared && npm run build --workspace=@skribo/backend && npm run build --workspace=@skribo/extension",
+    "build:extension": "npm run build --workspace=@skribo/extension",
+    "build:backend": "npm run build --workspace=@skribo/backend",
+    "build:admin": "npm run build --workspace=@skribo/admin",
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
-    "type-check": "npm run build --workspace=@livescribe/shared && npm run type-check --workspace=@livescribe/backend && npm run type-check --workspace=@livescribe/extension && npm run type-check --workspace=@livescribe/shared && npm run type-check --workspace=@livescribe/admin",
+    "type-check": "npm run build --workspace=@skribo/shared && npm run type-check --workspace=@skribo/backend && npm run type-check --workspace=@skribo/extension && npm run type-check --workspace=@skribo/shared && npm run type-check --workspace=@skribo/admin",
     "clean": "npm run clean --workspaces --if-present"
   },
   "devDependencies": {

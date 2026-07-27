@@ -1,4 +1,4 @@
-import type { ClientMessage, ServerMessage } from '@livescribe/shared';
+import type { ClientMessage, ServerMessage } from '@skribo/shared';
 
 // Injected at build time via Vite `define` (see vite.config.ts).
 declare const __WS_URL__: string;

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import type { PersonalTokenDTO } from '@livescribe/shared';
+import type { PersonalTokenDTO } from '@skribo/shared';
 import { prisma } from '../db/prisma.js';
 import { requireUser } from '../auth/guard.js';
 import { generateToken } from '../auth/tokens.js';

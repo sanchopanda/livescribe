@@ -11,7 +11,7 @@
     "composite": false,
     "paths": {
       "@/*": ["./src/*"],
-      "@livescribe/shared": ["../shared/src"]
+      "@skribo/shared": ["../shared/src"]
     }
   },
   "include": ["src/**/*"],

@@ -1,4 +1,4 @@
-import type { AuthResponse, LoginRequest, RegisterRequest, PersonalTokenDTO, MeetingDTO, MeetingDetailDTO, AnalysisDTO } from '@livescribe/shared';
+import type { AuthResponse, LoginRequest, RegisterRequest, PersonalTokenDTO, MeetingDTO, MeetingDetailDTO, AnalysisDTO } from '@skribo/shared';
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {

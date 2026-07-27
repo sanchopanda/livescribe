@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
-import type { UserDTO } from '@livescribe/shared';
+import type { UserDTO } from '@skribo/shared';
 import { getMe, logout as apiLogout } from '../api';
 
 type Status = 'loading' | 'authed' | 'guest';

@@ -1,5 +1,5 @@
 {
-  "name": "@livescribe/admin",
+  "name": "@skribo/admin",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@livescribe/shared": "*",
+    "@skribo/shared": "*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.1.0"

@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  optimizeDeps: { include: ['@livescribe/shared'] },
+  optimizeDeps: { include: ['@skribo/shared'] },
   server: {
     port: 5173,
     strictPort: true,

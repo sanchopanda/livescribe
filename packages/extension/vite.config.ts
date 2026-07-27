@@ -22,7 +22,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
-      '@livescribe/shared': path.resolve(__dirname, '../shared/src'),
+      '@skribo/shared': path.resolve(__dirname, '../shared/src'),
     },
   },
   build: {

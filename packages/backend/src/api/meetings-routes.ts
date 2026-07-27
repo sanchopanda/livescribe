@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import type { MeetingDTO, MeetingDetailDTO, ActionItem } from '@livescribe/shared';
+import type { MeetingDTO, MeetingDetailDTO, ActionItem } from '@skribo/shared';
 import { prisma } from '../db/prisma.js';
 import { requireUser } from '../auth/guard.js';
 import { isLlmConfigured } from '../llm/config.js';

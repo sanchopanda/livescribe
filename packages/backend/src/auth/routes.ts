@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import type { RegisterRequest, LoginRequest, AuthResponse } from '@livescribe/shared';
+import type { RegisterRequest, LoginRequest, AuthResponse } from '@skribo/shared';
 import { prisma } from '../db/prisma.js';
 import { hashPassword, verifyPassword } from './passwords.js';
 import { signJwt, generateToken, hashToken } from './tokens.js';

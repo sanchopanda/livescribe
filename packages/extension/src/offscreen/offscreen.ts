@@ -1,7 +1,7 @@
 // Offscreen document for WebSocket and Audio Capture
 // This runs persistently and maintains connections
 
-import type { ClientMessage, ServerMessage } from '@livescribe/shared';
+import type { ClientMessage, ServerMessage } from '@skribo/shared';
 
 console.log('Skribo offscreen document initialized');
 

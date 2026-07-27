@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 Skribo (переименовано из «LiveScribe», см. `docs/decisions/0004-product-name-skribo.md`;
-идентификаторы пакетов `@livescribe/*` пока сохранены — ребрендинг в `@skribo/*` = LS-10)
+идентификаторы пакетов — `@skribo/*`, ребрендинг LS-10 завершён)
 is a Chrome extension for real-time transcription of video calls (Google Meet, Zoom, MS Teams, Pachca). It supports platform-aware audio pipelines:
 - **mixed** mode: classic tab audio capture via `chrome.tabCapture`
 - **per-track** mode: per-participant WebRTC track capture (implemented for Pachca and Google Meet)

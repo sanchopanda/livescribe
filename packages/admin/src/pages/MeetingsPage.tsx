@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { MeetingDTO } from '@livescribe/shared';
+import type { MeetingDTO } from '@skribo/shared';
 import { listMeetings } from '../api';
 import { formatDate, formatDuration, platformLabel } from '../lib/format';
 import { Button } from '../ui/Button';

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import type { ClientMessage, ServerMessage } from '@livescribe/shared';
+import type { ClientMessage, ServerMessage } from '@skribo/shared';
 import { SessionManager } from './session.js';
 import { createSTTProvider } from '../stt/index.js';
 import type { STTProviderType } from '../stt/index.js';
