@@ -1,8 +1,8 @@
 import { chatJson, type ChatArgs } from './openrouter.js';
 import { getDetailedModel } from './config.js';
 import { buildTranscriptText, type TranscriptSeg } from './transcript.js';
+import type { ActionItem } from '@livescribe/shared';
 
-export interface ActionItem { text: string; owner?: string; }
 export interface MeetingAnalysis { summary: string; actionItems: ActionItem[]; }
 
 const SYSTEM = [

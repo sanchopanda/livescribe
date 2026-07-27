@@ -63,11 +63,17 @@ export function registerMeetingRoutes(server: FastifyInstance) {
       return reply.code(502).send({ error: 'analysis_failed' });
     }
 
-    const saved = await prisma.analysis.upsert({
-      where: { meetingId: m.id },
-      create: { meetingId: m.id, summary: result.summary, actionItems: result.actionItems as unknown as object },
-      update: { summary: result.summary, actionItems: result.actionItems as unknown as object, createdAt: new Date() },
-    });
+    let saved;
+    try {
+      saved = await prisma.analysis.upsert({
+        where: { meetingId: m.id },
+        create: { meetingId: m.id, summary: result.summary, actionItems: result.actionItems as unknown as object },
+        update: { summary: result.summary, actionItems: result.actionItems as unknown as object, createdAt: new Date() },
+      });
+    } catch (err) {
+      req.log.error({ err }, 'analysis save failed');
+      return reply.code(502).send({ error: 'analysis_failed' });
+    }
     return {
       summary: saved.summary,
       actionItems: saved.actionItems as ActionItem[] | null,
