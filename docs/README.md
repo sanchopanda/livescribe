@@ -19,6 +19,7 @@
   - [`0003-monorepo-layout-single-port.md`](decisions/0003-monorepo-layout-single-port.md)
   - [`0004-product-name-skribo.md`](decisions/0004-product-name-skribo.md)
   - [`0005-stt-strategy-self-hosted-ru.md`](decisions/0005-stt-strategy-self-hosted-ru.md)
+  - [`0006-llm-provider-openrouter.md`](decisions/0006-llm-provider-openrouter.md)
 - [`research/`](research/) — аналитика/ресёрч.
   - [`2026-07-26-stt-models-parakeet-gigaam.md`](research/2026-07-26-stt-models-parakeet-gigaam.md)
 - [`specs/`](specs/) — спеки фич (`NN-<feature>.md`).

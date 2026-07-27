@@ -21,6 +21,11 @@ description: >-
   `WS_PORT`, `STT_PROVIDER`, `DATABASE_URL`, `JWT_SECRET`, `WEB_ORIGIN`, `NODE_ENV=production`)
   — **не перезаписывать rsync-ом**. Бэкенд отказывается стартовать в проде без
   `JWT_SECRET`/`DATABASE_URL`.
+- **LLM-анализ (LS-09):** для кабинетного анализа нужен `OPENROUTER_API_KEY` в этом же `.env`
+  (+ опц. `LLM_MODEL_DETAILED`, дефолт `anthropic/claude-sonnet-4.5`; `LLM_MODEL_LIVE`,
+  дефолт `anthropic/claude-haiku-4.5`). Ключ **опционален**: без него сервис стартует, но
+  `POST /api/meetings/:id/analysis` отвечает `503`, а кабинет показывает «анализ не настроен».
+  После добавления ключа — `systemctl restart skribo-backend`.
 - TLS/reverse-proxy: **Caddy**, `/etc/caddy/Caddyfile` (`api.skribo.ru` → `127.0.0.1:3001`),
   авто-Let's Encrypt. Слушает 80/443.
 - Домен: `api.skribo.ru` (A-запись на reg.ru, NS `ns*.reg.ru`).
