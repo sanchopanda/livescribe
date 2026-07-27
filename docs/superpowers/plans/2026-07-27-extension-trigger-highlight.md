@@ -15,6 +15,7 @@
 - Без desktop-нотификаций (только визуально). Без регэкспов от пользователя (простые слова/фразы; экранировать при построении RegExp).
 - Русский UI-текст; английские идентификаторы. `npm run type-check` + `npm run build:extension` зелёные перед коммитом.
 - Читать релевантные участки `content.ts` (createUIWidget, appendTranscriptReplica, updateTranscript/render, escapeHtml) перед правками; минимальные аккуратные изменения в большом файле.
+- **Идиома файла:** виджет использует ТОЛЬКО инлайн-стили (нет `<style>`-элемента; транскрипт рендерится через `innerHTML` с инлайн-стилями по строке). НЕ инжектить `<style>`/`@keyframes` в страницу. Подсветку реплики делать инлайн-стилями в `updateTranscript`; вспышку виджета — через Web Animations API (`widget.animate(...)`), без CSS-классов и без затирания базового `box-shadow`.
 
 ---
 
@@ -59,7 +60,7 @@ function removeTrigger(w: string): void {
 ```
 `renderTriggers()` — перерисовывает список чипов с крестиком в контейнере `#skribo-triggers-list` (использовать `escapeHtml` для текста; навесить обработчики удаления).
 
-- [ ] **Step 3:** Разметка секции в `createUIWidget` (рядом с транскриптом): заголовок «Триггеры», `<input id="skribo-trigger-input" placeholder="Добавить слово…">` (Enter или кнопка «+» → `addTrigger`, очистить инпут), `<div id="skribo-triggers-list">`. Инлайн-стили в духе существующего виджета.
+- [ ] **Step 3:** Разметка секции в `createUIWidget` внутри `widget.innerHTML` — блок **сразу над** `#livescribe-transcript` (после `#livescribe-reset`/метрик, перед `#livescribe-ws-recovery`), инлайн-стили в духе виджета (напр. `<div style="margin-bottom: 8px;">`): заголовок «Триггеры», строка (`display:flex; gap:4px`) с `<input id="skribo-trigger-input" placeholder="Добавить слово…" style="flex:1; padding:6px 8px; border:1px solid #d1d5db; border-radius:4px; font-size:12px;">` + `<button id="skribo-trigger-add" ...>+</button>`, и `<div id="skribo-triggers-list" style="display:flex; flex-wrap:wrap; gap:4px; margin-top:6px;"></div>`. Обработчики повесить в блоке «Add event listeners» (рядом с `livescribe-reset`): клик по `#skribo-trigger-add` и Enter в `#skribo-trigger-input` → `addTrigger(input.value); input.value=''`. `renderTriggers()` рисует чипы: каждый — `<span>` со словом (через `escapeHtml`) + крестик; удаление — через `querySelectorAll` + `addEventListener` после рендера, НЕ инлайн-`onclick`.
 
 - [ ] **Step 4: Verify** — `npm run type-check` зелёный; `npm run build:extension` собирается.
 
@@ -91,23 +92,27 @@ function matchesTrigger(text: string): boolean {
 }
 ```
 
-- [ ] **Step 2:** В точке добавления **финальной** реплики (`appendTranscriptReplica` или где финал попадает в `transcriptReplicas`) — если `matchesTrigger(text)`: пометить реплику флагом `highlighted: true` (расширить тип реплики полем `highlighted?: boolean`) и вызвать `flashWidget()`. НЕ трогать partial-путь.
+- [ ] **Step 2:** Расширить тип: `interface TranscriptReplica { speaker: string; text: string; highlighted?: boolean; }`. Детект делать **внутри `appendTranscriptReplica`** (это единственный путь финальных реплик — partial только присваивает `partialReplica`, `append` не вызывает, так что partial автоматически не триггерит). После того как определён целевой объект реплики (ветка merge — `lastReplica`; ветка push — только что добавленный элемент): если `matchesTrigger(trimmedText)` → выставить `target.highlighted = true` и вызвать `flashWidget()`. В merge-ветке highlighted не сбрасывать (`||=`-семантика: если уже true — остаётся). Ветки early-return (дубликаты, пустой текст) не трогать.
 
-- [ ] **Step 3:** Рендер: в `updateTranscript` (или где строится HTML реплики) — если `replica.highlighted`, добавить класс `skribo-replica--trigger`. `flashWidget()`:
+- [ ] **Step 3:** Рендер в `updateTranscript`: для реплики с `replica.highlighted === true` добавить к её `<div>` инлайн-стили `border-left: 3px solid #0d9488; background: rgba(13,148,136,0.08); padding-left: 6px;` (объединить со стилями существующей ветки showSpeakerLabel / не-label; можно вынести общий `highlightStyle` и подставлять в оба варианта). `flashWidget()` через Web Animations API (без `<style>`/классов, не затирает базовый `box-shadow`):
 ```ts
 function flashWidget(): void {
   const w = document.getElementById('livescribe-widget');
-  if (!w) return;
-  w.classList.add('skribo-trigger-flash');
-  window.setTimeout(() => w.classList.remove('skribo-trigger-flash'), 1000);
+  if (!w || typeof w.animate !== 'function') return;
+  w.animate(
+    [
+      { boxShadow: '0 0 0 0 rgba(13,148,136,0)' },
+      { boxShadow: '0 0 0 4px rgba(13,148,136,0.6)', offset: 0.3 },
+      { boxShadow: '0 0 0 0 rgba(13,148,136,0)' },
+    ],
+    { duration: 1000, easing: 'ease' }
+  );
 }
 ```
 
-- [ ] **Step 4:** Стили (инлайн `<style>` виджета или где определяются стили): `.skribo-replica--trigger { border-left: 3px solid #0d9488; background: rgba(13,148,136,0.08); }` и анимация вспышки `.skribo-trigger-flash { animation: skriboFlash 1s ease; } @keyframes skriboFlash { 0%,100%{ box-shadow:none } 30%{ box-shadow:0 0 0 3px rgba(13,148,136,0.6) } }`.
+- [ ] **Step 4: Verify (браузер).** `npm run type-check` + `npm run build:extension` зелёные. Загрузить `dist` в Chrome (или прогнать через Chrome DevTools MCP на тест-странице, где можно вручную дёрнуть `appendTranscriptReplica`/эмулировать финальную реплику): добавить триггер «тест» в виджете → подать реплику с «тест» → реплика подсвечена + виджет пульснул; реплика без триггера → без подсветки; частичная (partial) реплика с триггером → НЕ триггерит; триггер сохраняется после перезагрузки виджета. Если полноценный браузер-прогон недоступен — собрать, проверить логику чтением и явно указать, что визуальная проверка за пользователем.
 
-- [ ] **Step 5: Verify (браузер).** `npm run type-check` + `npm run build:extension` зелёные. Загрузить `dist` в Chrome (или прогнать через Chrome DevTools MCP на тест-странице, где можно вручную дёрнуть `appendTranscriptReplica`/эмулировать финальную реплику): добавить триггер «тест» в виджете → подать реплику с «тест» → реплика подсвечена + виджет пульснул; реплика без триггера → без подсветки; частичная (partial) реплика с триггером → НЕ триггерит; триггер сохраняется после перезагрузки виджета. Если полноценный браузер-прогон недоступен — собрать, проверить логику чтением и явно указать, что визуальная проверка за пользователем.
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 ```bash
 git add packages/extension/src/content/content.ts
 git commit -m "feat(extension): highlight transcript replica + flash widget on trigger word"
