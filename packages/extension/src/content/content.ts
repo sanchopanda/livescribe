@@ -39,6 +39,7 @@ let recordingController: RecordingController | null = null;
 interface TranscriptReplica {
   speaker: string;
   text: string;
+  highlighted?: boolean;
 }
 
 let transcriptReplicas: TranscriptReplica[] = [];
@@ -81,11 +82,50 @@ function appendTranscriptReplica(speaker: string, text: string, eventTimestamp: 
 
   if (lastReplica && lastReplica.speaker === speaker && withinMergePause) {
     lastReplica.text = `${lastReplica.text} ${trimmedText}`.trim();
+    if (matchesTrigger(trimmedText)) {
+      lastReplica.highlighted = true;
+      flashWidget();
+    }
   } else {
-    transcriptReplicas.push({ speaker, text: trimmedText });
+    const newReplica: TranscriptReplica = { speaker, text: trimmedText };
+    transcriptReplicas.push(newReplica);
+    if (matchesTrigger(trimmedText)) {
+      newReplica.highlighted = true;
+      flashWidget();
+    }
   }
 
   lastFinalTimestamp = eventTimestamp;
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function matchesTrigger(text: string): boolean {
+  if (!triggers.length) return false;
+  return triggers.some((t) => {
+    const w = t.trim();
+    if (!w) return false;
+    try {
+      return new RegExp('(^|\\P{L})' + escapeRegExp(w) + '($|\\P{L})', 'iu').test(text);
+    } catch {
+      return text.toLowerCase().includes(w.toLowerCase());
+    }
+  });
+}
+
+function flashWidget(): void {
+  const w = document.getElementById('livescribe-widget');
+  if (!w || typeof w.animate !== 'function') return;
+  w.animate(
+    [
+      { boxShadow: '0 0 0 0 rgba(13,148,136,0)' },
+      { boxShadow: '0 0 0 4px rgba(13,148,136,0.6)', offset: 0.3 },
+      { boxShadow: '0 0 0 0 rgba(13,148,136,0)' },
+    ],
+    { duration: 1000, easing: 'ease' }
+  );
 }
 
 function normalizeSpeaker(speaker?: string | null): string {
@@ -993,10 +1033,13 @@ function updateTranscript() {
     const text = escapeHtml(replica.text);
     const previousSpeaker = index > 0 ? transcriptReplicas[index - 1].speaker : null;
     const showSpeakerLabel = previousSpeaker !== replica.speaker;
+    const highlightStyle = replica.highlighted === true
+      ? 'border-left: 3px solid #0d9488; background: rgba(13,148,136,0.08); padding-left: 6px;'
+      : '';
 
     return showSpeakerLabel
-      ? `<div style="margin-bottom: 6px;"><span style="font-weight: 600;">${speaker}:</span> ${text}</div>`
-      : `<div style="margin-bottom: 6px; padding-left: 6px;">${text}</div>`;
+      ? `<div style="margin-bottom: 6px; ${highlightStyle}"><span style="font-weight: 600;">${speaker}:</span> ${text}</div>`
+      : `<div style="margin-bottom: 6px; padding-left: 6px; ${highlightStyle}">${text}</div>`;
   });
 
   if (partialReplica && partialReplica.text.trim()) {
