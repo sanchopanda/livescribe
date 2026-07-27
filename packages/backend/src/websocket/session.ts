@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import type { STTProvider } from '../stt/types.js';
+import { RECORDINGS_ENABLED } from '../config.js';
 
 interface Session {
   id: string;
@@ -150,7 +151,9 @@ export class SessionManager {
   addAudioChunk(sessionId: string, audioBuffer: Buffer): void {
     const session = this.sessions.get(sessionId);
     if (session) {
-      session.audioChunks.push(audioBuffer);
+      // Only buffer raw audio when recordings are enabled (dev/test). In production
+      // nothing is pushed, so audioChunks stays empty and no WAV is ever written.
+      if (RECORDINGS_ENABLED) session.audioChunks.push(audioBuffer);
       session.audioChunksReceived++;
       session.totalBytesReceived += audioBuffer.byteLength;
 

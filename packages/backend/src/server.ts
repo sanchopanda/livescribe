@@ -9,6 +9,7 @@ import { registerMeetingRoutes } from './api/meetings-routes.js';
 import { registerLlmRoutes } from './api/llm-routes.js';
 import { readdirSync, statSync, createReadStream } from 'fs';
 import { join } from 'path';
+import { RECORDINGS_ENABLED } from './config.js';
 
 export async function createServer() {
   const server = Fastify({
@@ -61,6 +62,9 @@ export async function createServer() {
     return { status: 'ok', timestamp: Date.now() };
   });
 
+  // Recordings endpoints are registered ONLY in dev/test (config.RECORDINGS_ENABLED).
+  // In production they do not exist at all — raw call audio is never persisted or served.
+  if (RECORDINGS_ENABLED) {
   // List recordings
   server.get('/recordings', async (_request, reply) => {
     try {
@@ -118,6 +122,7 @@ export async function createServer() {
       return { error: 'Failed to download recording', message: (err as Error).message };
     }
   });
+  }
 
   return server;
 }
