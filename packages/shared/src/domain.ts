@@ -6,7 +6,8 @@ export interface RegisterRequest { email: string; password: string; name?: strin
 export interface TranscriptSegmentDTO {
   id: string; speaker: string | null; text: string; tsMs: number; confidence: number | null;
 }
-export interface AnalysisDTO { summary: string | null; actionItems: unknown | null; }
+export interface ActionItem { text: string; owner?: string; }
+export interface AnalysisDTO { summary: string | null; actionItems: ActionItem[] | null; createdAt?: string | null; }
 export interface MeetingDTO {
   id: string; platform: string | null; title: string | null; audioMode: string | null;
   startedAt: string; endedAt: string | null; durationSec: number | null; participantsCount: number | null;
