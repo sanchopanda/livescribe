@@ -20,6 +20,7 @@
     "build:extension": "npm run build --workspace=@skribo/extension",
     "build:backend": "npm run build --workspace=@skribo/backend",
     "build:admin": "npm run build --workspace=@skribo/admin",
+    "pack:extension": "bash scripts/pack-extension.sh",
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "type-check": "npm run build --workspace=@skribo/shared && npm run type-check --workspace=@skribo/backend && npm run type-check --workspace=@skribo/extension && npm run type-check --workspace=@skribo/shared && npm run type-check --workspace=@skribo/admin",

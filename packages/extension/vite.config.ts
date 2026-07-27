@@ -12,13 +12,35 @@ const WS_URL = process.env.WS_URL || 'ws://localhost:3001/ws';
 const API_URL = process.env.API_URL || 'http://localhost:3001';
 const CABINET_URL = process.env.CABINET_URL || 'http://localhost:5173';
 
+const EXT_TARGET = process.env.EXT_TARGET;
+
+function activeManifest() {
+  if (EXT_TARGET !== 'store') return manifest;
+  const m = JSON.parse(JSON.stringify(manifest)) as typeof manifest;
+  m.host_permissions = [
+    'https://api.skribo.ru/*',
+    'https://app.skribo.ru/*',
+    'https://meet.google.com/*',
+    'https://zoom.us/*',
+    'https://*.zoom.us/*',
+    'https://teams.microsoft.com/*',
+    'https://*.teams.microsoft.com/*',
+    'https://*.pachca.com/*',
+    'https://app.pachca.com/*',
+  ];
+  m.content_scripts = m.content_scripts
+    .filter((cs: any) => !cs.js.some((j: string) => j.includes('platform-research')))
+    .map((cs: any) => ({ ...cs, matches: cs.matches.filter((p: string) => !p.includes('youtube')) }));
+  return m;
+}
+
 export default defineConfig({
   define: {
     __WS_URL__: JSON.stringify(WS_URL),
     __API_URL__: JSON.stringify(API_URL),
     __CABINET_URL__: JSON.stringify(CABINET_URL),
   },
-  plugins: [react(), crx({ manifest: manifest as any })],
+  plugins: [react(), crx({ manifest: activeManifest() as any })],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -32,7 +54,6 @@ export default defineConfig({
       input: {
         offscreen: path.resolve(__dirname, 'src/offscreen/offscreen.ts'),
         content: path.resolve(__dirname, 'src/content/content.ts'),
-        'platform-research': path.resolve(__dirname, 'src/content/platform-research.ts'),
         'pachca-webrtc-tracks-main': path.resolve(
           __dirname,
           'src/content/platforms/pachca/audio/per-track/webrtc-tracks-main.ts',
@@ -41,6 +62,9 @@ export default defineConfig({
           __dirname,
           'src/content/platforms/meet/audio/per-track/webrtc-tracks-main.ts',
         ),
+        ...(EXT_TARGET === 'store'
+          ? {}
+          : { 'platform-research': path.resolve(__dirname, 'src/content/platform-research.ts') }),
       },
       output: {
         entryFileNames: (chunkInfo) => {
