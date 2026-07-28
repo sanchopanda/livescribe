@@ -148,10 +148,16 @@ app.skribo.ru {
 как было с `/api/auth/extension-login` — деплой кабинета обновил только `admin`, бэкенд остался
 старым. Проверка: `curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:3001/api/auth/extension-token` → `401`, не `404`.
 
-## Расширение под прод
+## Расширение: сборки под dev/prod/store
 
-Клиент подключается к бэкенду по адресу из build-time конфига:
+URL бэкенда вшивается на этапе сборки; **дефолт — прод** (`api.skribo.ru`). Выходные папки
+раздельные:
 ```bash
-WS_URL=wss://api.skribo.ru/ws npm run build:extension
+npm run build:extension        # обе версии: прод → dist/ , dev → dist-dev/
+npm run build:extension:prod   # только прод (api.skribo.ru) → dist/
+npm run build:extension:dev    # только dev (localhost) → dist-dev/
+npm run pack:extension         # store-сборка (узкий манифест) → dist-store/ → skribo-extension-<v>.zip
 ```
-Дефолт (без `WS_URL`) — `ws://localhost:3001/ws` для локальной разработки.
+Механика: `BUILD_TARGET` (дефолт `prod`) в `packages/extension/vite.config.ts` задаёт URL и
+`OUT_DIR`; `EXT_TARGET=store` даёт узкий манифест; `WS_URL`/`API_URL`/`EXT_OUT` переопределяют.
+`npm run dev` (watch) закреплён на dev (localhost) → `dist-dev/`.

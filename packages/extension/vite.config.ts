@@ -4,15 +4,18 @@ import { crx } from '@crxjs/vite-plugin';
 import manifest from './public/manifest.json';
 import path from 'path';
 
-// Backend WebSocket URL is baked in at build time.
-// Dev (default): ws://localhost:3001/ws. Prod: WS_URL=wss://api.skribo.ru/ws npm run build:extension
-const WS_URL = process.env.WS_URL || 'ws://localhost:3001/ws';
-// Backend HTTP host (email/password login) and cabinet host (session auto-detect),
-// also baked in at build time. Prod: API_URL=https://api.skribo.ru CABINET_URL=https://app.skribo.ru npm run build:extension
-const API_URL = process.env.API_URL || 'http://localhost:3001';
-const CABINET_URL = process.env.CABINET_URL || 'http://localhost:5173';
+// Build target selects both the backend URLs (baked in at build time) and the output
+// folder. Default is 'prod' (api.skribo.ru → dist/); 'dev' targets localhost → dist-dev/.
+// Explicit WS_URL/API_URL/CABINET_URL still override. Set via `BUILD_TARGET=dev`.
+const BUILD_TARGET = process.env.BUILD_TARGET || 'prod';
+const IS_DEV = BUILD_TARGET === 'dev';
+const WS_URL = process.env.WS_URL || (IS_DEV ? 'ws://localhost:3001/ws' : 'wss://api.skribo.ru/ws');
+const API_URL = process.env.API_URL || (IS_DEV ? 'http://localhost:3001' : 'https://api.skribo.ru');
+const CABINET_URL = process.env.CABINET_URL || (IS_DEV ? 'http://localhost:5173' : 'https://app.skribo.ru');
 
 const EXT_TARGET = process.env.EXT_TARGET;
+// Output folder: store build → dist-store/, dev → dist-dev/, prod (default) → dist/.
+const OUT_DIR = process.env.EXT_OUT || (EXT_TARGET === 'store' ? 'dist-store' : IS_DEV ? 'dist-dev' : 'dist');
 
 function activeManifest() {
   if (EXT_TARGET !== 'store') return manifest;
@@ -56,7 +59,7 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: 'dist',
+    outDir: OUT_DIR,
     emptyOutDir: true,
     rollupOptions: {
       input: {

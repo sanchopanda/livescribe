@@ -37,6 +37,8 @@ coverage/
 
 # Extension specific
 packages/extension/dist/
+packages/extension/dist-dev/
+packages/extension/dist-store/
 packages/extension/.crx
 skribo-extension-*.zip
 # Generated TypeScript files (should not be generated anymore)

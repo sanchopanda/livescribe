@@ -4,12 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite build --watch --mode development",
+    "dev": "BUILD_TARGET=dev vite build --watch --mode development",
     "build": "npm run type-check && vite build",
     "preview": "vite preview",
     "lint": "eslint src --ext ts,tsx",
     "type-check": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist dist-dev dist-store"
   },
   "dependencies": {
     "@skribo/shared": "*",
