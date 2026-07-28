@@ -82,8 +82,17 @@
 
 - [ ] LS-04 — **Deepgram error/reconnect UX.** Явная индикация ошибок STT и восстановления
   потока в виджете; ретраи с backoff.
-- [ ] LS-05 — **Упаковка расширения.** Сборка zip для Chrome Web Store, проверка manifest
-  и прав; шаги в `docs/guides/`.
+- [x] LS-05 — **Упаковка расширения под Chrome Web Store.** Иконки-монограмма (16/48/128),
+  store-таргет сборки (`EXT_TARGET=store`: сужены host_permissions/matches/web_accessible_resources,
+  вырезаны `platform-research` и YouTube; dev-сборка не тронута), `npm run pack:extension` → zip,
+  публичная страница `/privacy` в кабинете (LIVE `https://app.skribo.ru/privacy`), гайд
+  `docs/guides/chrome-web-store.md`. Финальное ревью (opus) → merge. Осталось пользователю:
+  аккаунт+$5, скриншоты, заполнение дашборда, подача. Реальный логотип/локализация — follow-up.
+- [x] LS-15 — **🔒 Прод не пишет и не отдаёт сырое аудио.** Была утечка: бэкенд безусловно писал
+  аудио звонков в `recordings/*.wav` и отдавал их публично без авторизации (`GET /recordings`,
+  `/recordings/:filename`). Загейчено `recordingsEnabled()` (`NODE_ENV !== production`, ленивая
+  проверка — dotenv грузит `.env` после init модуля): в проде запись и эндпоинты отключены, в
+  dev/test — работают. Задеплоено, 54 старые записи удалены, `/recordings` на проде → 404.
 - [x] LS-10 — **Ребрендинг livescribe → Skribo.** Механическое переименование
   идентификаторов пакетов на `@skribo/*` (были со старым префиксом), алиасы
   `vite.config`/`tsconfig`, упоминания в коде/живых доках. Имя репозитория на GitHub —

@@ -137,17 +137,36 @@
   `[LiveScribe]`, MAIN-world-маркеры — на месте, ренейм — отдельный follow-up). Ревью (spec ✅,
   Approved). Прод-поведение не меняется (идентификаторы — build-time), редеплой не обязателен.
 
+## Сделано (последнее, LS-05 + LS-15)
+
+- **LS-05 — упаковка расширения под Chrome Web Store.** Иконки-монограмма (PIL, 16/48/128,
+  коммитятся), store-таргет в `vite.config` (`EXT_TARGET=store`: сужены
+  host_permissions/matches/web_accessible_resources, срез `platform-research`+YouTube; dev-сборка
+  широкая, не тронута), `scripts/pack-extension.sh` + `npm run pack:extension` → `skribo-extension-<v>.zip`,
+  публичная `/privacy` в кабинете (**LIVE** `https://app.skribo.ru/privacy`), гайд
+  `docs/guides/chrome-web-store.md` (обоснования прав + data-disclosures). Финальное ревью (opus) → merge.
+  Диапазон `e064fc3..547c849`.
+- **LS-15 (🔒 security) — прод не хранит/не отдаёт сырое аудио.** Обнаружено при ревью LS-05:
+  бэкенд писал аудио звонков в `recordings/*.wav` и **публично отдавал** без авторизации
+  (`GET /recordings`, `/recordings/:filename` — проверено: на проде отдавался список 54 записей).
+  Фикс: `recordingsEnabled()` (`NODE_ENV!==production`, **ленивая** проверка — модульный const
+  ловил `undefined`, т.к. dotenv грузит `.env` после инициализации импортов) гейтит и запись, и
+  эндпоинты. **Задеплоено**, 54 старые `.wav` удалены, `/recordings` на проде → 404; health/wss ок.
+  Коммиты `cee04bb`+`61dbf7c`. Ключевая грабля — см. память про dotenv-timing.
+
 ## Следующее
 
 - Добавить на сервер `OPENROUTER_API_KEY` и SMTP-креды (+`APP_URL`) → рестарт → живая проверка
   анализа/саммари/сброса пароля.
+- LS-05: пользователь — аккаунт+$5, скриншоты, дашборд, подача. Подтвердить контакт в privacy.
 - Или новая фича из бэклога (LS-05 упаковка, LS-04 reconnect UX, LS-01/02 платформы, LS-13 self-host STT).
 - Опц. follow-up: рантайм-ребренд `livescribe-*` (DOM/storage/логи); LS-14 desktop-нотификация;
   LS-12 верификация email + rate-limit; ренейм GitHub-репо `livescribe`→`skribo`.
 
 ## Задача в работе
 
-- Нет (LS-10 закрыт). Коммиты LS-10 в `origin` не запушены.
+- Нет (LS-05 + LS-15 закрыты). Security-фикс LS-15 задеплоен на прод; LS-05-код запушен;
+  кабинет с `/privacy` задеплоен.
 
 ## Деплой кабинета (когда дойдём)
 
