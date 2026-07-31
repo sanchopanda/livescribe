@@ -2,6 +2,11 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { crx } from '@crxjs/vite-plugin';
 import manifest from './public/manifest.json';
+import {
+  CALL_PLATFORM_MATCHES,
+  DEV_ONLY_MATCHES,
+  PLATFORM_HOSTS,
+} from './src/platform/hosts';
 import path from 'path';
 
 // Build target selects the build flavor: 'prod' (default) or 'dev' (dev-only entry points,
@@ -32,53 +37,84 @@ const OUT_DIR =
 // Research probe: MAIN world at document_start, every frame, dev builds only. It has to be
 // installed before the page opens its RTCPeerConnections, so it cannot be injected on demand.
 const RESEARCH_PROBE_ENTRY = 'src/content/research/webrtc-probe-main.js';
-const RESEARCH_PROBE_CONTENT_SCRIPT = {
-  matches: [
-    'https://meet.google.com/*',
-    'https://zoom.us/*',
-    'https://*.zoom.us/*',
-    'https://teams.microsoft.com/*',
-    'https://*.teams.microsoft.com/*',
-    'https://*.pachca.com/*',
-    'https://app.pachca.com/*',
-  ],
-  js: [RESEARCH_PROBE_ENTRY],
-  run_at: 'document_start',
-  all_frames: true,
-  world: 'MAIN',
-};
+
+// Content scripts are composed here rather than written out in public/manifest.json: the host
+// lists come from src/platform/hosts.ts, the same module the runtime detector uses. Keeping
+// them in the JSON is what let the manifest and the detector drift apart (Teams moved to
+// teams.cloud.microsoft and only the detector was updated).
+function contentScripts() {
+  const scripts: any[] = [
+    {
+      matches: PLATFORM_HOSTS.pachca.matches,
+      js: ['src/content/platforms/pachca/audio/per-track/webrtc-tracks-main.js'],
+      run_at: 'document_start',
+      all_frames: false,
+      world: 'MAIN',
+    },
+    {
+      matches: PLATFORM_HOSTS.meet.matches,
+      js: ['src/content/platforms/meet/audio/per-track/webrtc-tracks-main.js'],
+      run_at: 'document_start',
+      all_frames: false,
+      world: 'MAIN',
+    },
+    {
+      // The widget also loads on the dev-only hosts, where there is nothing to transcribe but
+      // plenty to inspect.
+      matches: [...CALL_PLATFORM_MATCHES, ...(EXT_TARGET === 'store' ? [] : DEV_ONLY_MATCHES)],
+      js: ['src/content/content.js'],
+      run_at: 'document_idle',
+      all_frames: false,
+    },
+  ];
+
+  if (EXT_TARGET !== 'store') {
+    scripts.push({
+      matches: CALL_PLATFORM_MATCHES,
+      js: ['src/content/platform-research.js'],
+      run_at: 'document_idle',
+      all_frames: false,
+      world: 'MAIN',
+    });
+  }
+
+  if (IS_DEV) {
+    scripts.unshift({
+      matches: CALL_PLATFORM_MATCHES,
+      js: [RESEARCH_PROBE_ENTRY],
+      run_at: 'document_start',
+      all_frames: true,
+      world: 'MAIN',
+    });
+  }
+
+  return scripts;
+}
 
 function activeManifest() {
+  const m = JSON.parse(JSON.stringify(manifest)) as any;
+  m.content_scripts = contentScripts();
+
   if (EXT_TARGET !== 'store') {
-    if (!IS_DEV) return manifest;
-    // Dev flavors are loaded unpacked alongside each other — suffix the name so they are
-    // told apart in chrome://extensions and in the toolbar.
-    const dev = JSON.parse(JSON.stringify(manifest)) as typeof manifest;
-    dev.name = IS_LOCAL_BACKEND ? 'Skribo (dev)' : 'Skribo (dev → prod)';
-    dev.content_scripts = [RESEARCH_PROBE_CONTENT_SCRIPT as any, ...dev.content_scripts];
-    return dev;
+    if (IS_DEV) {
+      // Dev flavors are loaded unpacked alongside each other — suffix the name so they are
+      // told apart in chrome://extensions and in the toolbar.
+      m.name = IS_LOCAL_BACKEND ? 'Skribo (dev)' : 'Skribo (dev → prod)';
+    }
+    return m;
   }
-  const m = JSON.parse(JSON.stringify(manifest)) as typeof manifest;
+
   m.host_permissions = [
     'https://api.skribo.ru/*',
     'https://app.skribo.ru/*',
-    'https://meet.google.com/*',
-    'https://zoom.us/*',
-    'https://*.zoom.us/*',
-    'https://teams.microsoft.com/*',
-    'https://*.teams.microsoft.com/*',
-    'https://*.pachca.com/*',
-    'https://app.pachca.com/*',
+    ...CALL_PLATFORM_MATCHES,
   ];
-  m.content_scripts = m.content_scripts
-    .filter((cs: any) => !cs.js.some((j: string) => j.includes('platform-research')))
-    .map((cs: any) => ({ ...cs, matches: cs.matches.filter((p: string) => !p.includes('youtube')) }));
   // Narrow web_accessible_resources away from <all_urls> to the supported hosts,
   // so the worklet isn't exposed to every site (store review flags <all_urls> here too).
-  if (Array.isArray((m as any).web_accessible_resources)) {
-    (m as any).web_accessible_resources = (m as any).web_accessible_resources.map((r: any) => ({
+  if (Array.isArray(m.web_accessible_resources)) {
+    m.web_accessible_resources = m.web_accessible_resources.map((r: any) => ({
       ...r,
-      matches: m.host_permissions.filter((p: string) => !p.includes('skribo.ru')),
+      matches: CALL_PLATFORM_MATCHES,
     }));
   }
   return m;

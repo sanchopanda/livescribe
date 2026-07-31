@@ -79,8 +79,10 @@ Audio capture flow depends on platform/mode:
 - **mixed**: `chrome.tabCapture` → AudioContext → AudioWorklet → PCM Int16 → base64 → WebSocket
 - **per-track (Pachca, Meet)**: MAIN-world WebRTC hook → track registry → per-track AudioWorklet capture → PCM Int16 → base64 → WebSocket
 
-**Content Scripts:** Currently limited to specific domains (Google Meet, Zoom, Teams, YouTube).
-TODO: Update `public/manifest.json` matches list when adding support for new video platforms.
+**Content Scripts:** Host lists live in `src/platform/hosts.ts` — the single source for manifest
+`matches`, the runtime platform detector and the store build's `host_permissions`.
+`public/manifest.json` no longer carries them (`content_scripts` there is empty; `vite.config.ts`
+composes it). To support a new platform, add an entry to `PLATFORM_HOSTS`.
 
 ### packages/backend
 Node.js WebSocket server using Fastify:

@@ -21,58 +21,7 @@
     "default_title": "Skribo",
     "default_icon": { "16": "icons/icon-16.png", "48": "icons/icon-48.png", "128": "icons/icon-128.png" }
   },
-  "content_scripts": [
-    {
-      "matches": [
-        "https://*.pachca.com/*",
-        "https://app.pachca.com/*"
-      ],
-      "js": ["src/content/platforms/pachca/audio/per-track/webrtc-tracks-main.js"],
-      "run_at": "document_start",
-      "all_frames": false,
-      "world": "MAIN"
-    },
-    {
-      "matches": [
-        "https://meet.google.com/*"
-      ],
-      "js": ["src/content/platforms/meet/audio/per-track/webrtc-tracks-main.js"],
-      "run_at": "document_start",
-      "all_frames": false,
-      "world": "MAIN"
-    },
-    {
-      "matches": [
-        "https://meet.google.com/*",
-        "https://zoom.us/*",
-        "https://*.zoom.us/*",
-        "https://teams.microsoft.com/*",
-        "https://*.teams.microsoft.com/*",
-        "https://*.pachca.com/*",
-        "https://app.pachca.com/*",
-        "https://www.youtube.com/*",
-        "https://youtube.com/*"
-      ],
-      "js": ["src/content/content.js"],
-      "run_at": "document_idle",
-      "all_frames": false
-    },
-    {
-      "matches": [
-        "https://teams.microsoft.com/*",
-        "https://*.teams.microsoft.com/*",
-        "https://*.pachca.com/*",
-        "https://app.pachca.com/*",
-        "https://meet.google.com/*",
-        "https://zoom.us/*",
-        "https://*.zoom.us/*"
-      ],
-      "js": ["src/content/platform-research.js"],
-      "run_at": "document_idle",
-      "all_frames": false,
-      "world": "MAIN"
-    }
-  ],
+  "content_scripts": [],
   "web_accessible_resources": [
     {
       "resources": ["processor.worklet.js"],

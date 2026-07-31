@@ -1,10 +1,12 @@
+import { detectPlatformByHostname } from '../../platform/hosts';
+
 export type PlatformForStart = 'meet' | 'zoom' | 'teams' | 'pachca' | undefined;
 
+/**
+ * Which call platform this page belongs to. Hosts live in `platform/hosts.ts`, the same list
+ * the manifest `matches` are generated from — so a page the extension runs on is always a page
+ * it can identify.
+ */
 export function getPlatformForStartMessage(): PlatformForStart {
-  const host = window.location.hostname;
-  if (host.includes('pachca.com')) return 'pachca';
-  if (host.includes('meet.google.com')) return 'meet';
-  if (host.includes('zoom.us')) return 'zoom';
-  if (host.includes('teams.microsoft.com') || host.includes('teams.live.com')) return 'teams';
-  return undefined;
+  return detectPlatformByHostname(window.location.hostname);
 }
