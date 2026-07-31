@@ -12,7 +12,12 @@
       "Bash(git commit -q -m ' *)",
       "Bash(timeout 12 curl -s -o /dev/null -w 'HTTP %{http_code}\\\\n' --max-time 8 -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' -H 'Sec-WebSocket-Version: 13' https://api.skribo.ru/ws)",
       "Bash(timeout 12 openssl s_client -connect api.skribo.ru:443 -servername api.skribo.ru)",
-      "Bash(openssl x509 *)"
+      "Bash(openssl x509 *)",
+      "Bash(python3 -c ' *)",
+      "Bash(echo \"type-check exit=$?\")",
+      "Bash(echo \"test exit=$?\")",
+      "Bash(echo \"build exit=$?\")",
+      "Bash(python3 *)"
     ]
   }
 }
