@@ -3,7 +3,10 @@
 
 import { createPlatformAdapter } from './platform/platform-adapter';
 import { RecordingController } from './recording/recording-controller';
+import { researchPanelHtml, setupResearchPanel } from './research/research-panel';
 import { AUTO_SHOW_WIDGET_KEY, getAutoShowWidget } from '../settings/widget-settings';
+
+declare const __DEV_TOOLS__: boolean;
 
 console.log('LiveScribe content script loaded');
 console.log('[LiveScribe] content build marker: 2026-02-20-track-transcriber-diagnostics');
@@ -905,6 +908,7 @@ function createUIWidget() {
         font-size: 11px;
         display: none;
       "></div>
+      ${__DEV_TOOLS__ ? researchPanelHtml() : ''}
     </div>
     <div id="livescribe-resize-handle" style="
       position: absolute;
@@ -959,6 +963,13 @@ function createUIWidget() {
         });
       }
     });
+
+  if (__DEV_TOOLS__) {
+    setupResearchPanel({
+      getPlatform: () => platformAdapter.getPlatform() ?? null,
+      getDomSpeaker: () => platformAdapter.getActiveSpeaker(),
+    });
+  }
 
   renderAudioMetrics();
   renderWsRecoveryIndicator();

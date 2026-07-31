@@ -171,6 +171,20 @@
   суффикс в имени («Skribo (dev)» / «Skribo (dev → prod)»), чтобы все три уживались в Chrome
   одновременно. `npm run build:extension` собирает все три.
 
+## Сделано (последнее, зонд разведки)
+
+- **WebRTC-зонд для разведки платформ (подготовка к LS-02 Teams / LS-01 Zoom).** MAIN-world
+  скрипт `content/research/webrtc-probe-main.ts` на `document_start` во всех фреймах — только
+  в dev-флейворе (в `dist/` и `dist-store/` его нет, проверено на собранных манифестах).
+  Пассивно оборачивает `RTCPeerConnection`, по запросу отдаёт `getStats()`. В виджете —
+  секция «🔬 Research (dev)»: снимки накапливаются, есть скачивание/копирование JSON. В снимке:
+  `inbound-rtp` по каждому `ssrc` с `audioLevel`, кто говорит по DOM, плитки участников и
+  **автопоиск** DOM-атрибутов, совпадающих со `ssrc`/`trackIdentifier` (аналог `data-ssrc` у Meet).
+  В `packages/extension` заведён vitest (раньше тестов не было): 11 тестов на чистый
+  `report-builder`. Спека — `docs/superpowers/specs/2026-07-31-webrtc-research-probe-design.md`.
+- **Дальше по LS-02 нужен живой прогон в Teams** (≥3 участника): собрать снимки, пока говорят
+  разные люди → это и есть go/no-go по per-track.
+
 ## Следующее
 
 - Добавить на сервер `OPENROUTER_API_KEY` и SMTP-креды (+`APP_URL`) → рестарт → живая проверка

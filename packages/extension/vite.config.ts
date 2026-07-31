@@ -29,6 +29,25 @@ const DEV_OUT_DIR = IS_LOCAL_BACKEND ? 'dist-dev' : 'dist-dev-prod';
 const OUT_DIR =
   process.env.EXT_OUT || (EXT_TARGET === 'store' ? 'dist-store' : IS_DEV ? DEV_OUT_DIR : 'dist');
 
+// Research probe: MAIN world at document_start, every frame, dev builds only. It has to be
+// installed before the page opens its RTCPeerConnections, so it cannot be injected on demand.
+const RESEARCH_PROBE_ENTRY = 'src/content/research/webrtc-probe-main.js';
+const RESEARCH_PROBE_CONTENT_SCRIPT = {
+  matches: [
+    'https://meet.google.com/*',
+    'https://zoom.us/*',
+    'https://*.zoom.us/*',
+    'https://teams.microsoft.com/*',
+    'https://*.teams.microsoft.com/*',
+    'https://*.pachca.com/*',
+    'https://app.pachca.com/*',
+  ],
+  js: [RESEARCH_PROBE_ENTRY],
+  run_at: 'document_start',
+  all_frames: true,
+  world: 'MAIN',
+};
+
 function activeManifest() {
   if (EXT_TARGET !== 'store') {
     if (!IS_DEV) return manifest;
@@ -36,6 +55,7 @@ function activeManifest() {
     // told apart in chrome://extensions and in the toolbar.
     const dev = JSON.parse(JSON.stringify(manifest)) as typeof manifest;
     dev.name = IS_LOCAL_BACKEND ? 'Skribo (dev)' : 'Skribo (dev → prod)';
+    dev.content_scripts = [RESEARCH_PROBE_CONTENT_SCRIPT as any, ...dev.content_scripts];
     return dev;
   }
   const m = JSON.parse(JSON.stringify(manifest)) as typeof manifest;
@@ -69,6 +89,8 @@ export default defineConfig({
     __WS_URL__: JSON.stringify(WS_URL),
     __API_URL__: JSON.stringify(API_URL),
     __CABINET_URL__: JSON.stringify(CABINET_URL),
+    // Gates dev-only UI (the research panel). Never true in prod/store builds.
+    __DEV_TOOLS__: JSON.stringify(IS_DEV),
   },
   plugins: [react(), crx({ manifest: activeManifest() as any })],
   resolve: {
@@ -95,6 +117,9 @@ export default defineConfig({
         ...(EXT_TARGET === 'store'
           ? {}
           : { 'platform-research': path.resolve(__dirname, 'src/content/platform-research.ts') }),
+        ...(IS_DEV
+          ? { 'webrtc-probe-main': path.resolve(__dirname, 'src/content/research/webrtc-probe-main.ts') }
+          : {}),
       },
       output: {
         entryFileNames: (chunkInfo) => {
@@ -106,6 +131,9 @@ export default defineConfig({
           }
           if (chunkInfo.name === 'platform-research') {
             return 'src/content/platform-research.js';
+          }
+          if (chunkInfo.name === 'webrtc-probe-main') {
+            return RESEARCH_PROBE_ENTRY;
           }
           if (chunkInfo.name === 'pachca-webrtc-tracks-main') {
             return 'src/content/platforms/pachca/audio/per-track/webrtc-tracks-main.js';

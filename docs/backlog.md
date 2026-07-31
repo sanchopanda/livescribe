@@ -85,6 +85,12 @@
   для Zoom; включить capabilities (сейчас у zoom всё `false`, только mixed).
 - [ ] LS-02 — **Teams per-track.** У Teams уже есть speaker-DOM; добавить WebRTC-хук и
   per-track пайплайн, включить `supportsPerTrackAudioMode`/`supportsMainWorldWebRTCHook`.
+  - [x] Инструмент разведки: WebRTC-зонд в dev-сборке (секция «🔬 Research (dev)» в виджете,
+    снимки + JSON). Спека — `docs/superpowers/specs/2026-07-31-webrtc-research-probe-design.md`.
+  - [ ] **Прогнать зонд в живом звонке Teams (≥3 участника)** — go/no-go: сколько входящих
+    аудио-потоков, есть ли в DOM атрибут со `ssrc`/`trackIdentifier`, медиа в iframe или нет.
+    Если поток один — Teams остаётся mixed-only, задача закрывается как «не применимо».
+  - [ ] По итогам отчёта — объём per-track пайплайна (зеркало `platforms/meet/`).
 - [ ] LS-03 — **Хардненинг авто-детекта платформы.** Проверить надёжность `platform-detector`
   на всех поддерживаемых доменах и обновить `manifest.json` matches.
 
