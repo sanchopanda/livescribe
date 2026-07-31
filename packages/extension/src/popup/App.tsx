@@ -1,9 +1,19 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { currentAccount, loginWithPassword, signOut, tryAutoDetect } from './auth-api';
+import { readWidgetState, toggleWidget } from './widget-api';
+import { AUTO_SHOW_WIDGET_DEFAULT, getAutoShowWidget, setAutoShowWidget } from '../settings/widget-settings';
+import type { WidgetToggleError } from '../messaging/widget-messages';
 
 declare const __CABINET_URL__: string;
 
 type Status = 'loading' | 'authed' | 'guest';
+
+const SUPPORTED_PLATFORMS = 'Meet, Zoom, Teams, Pachca';
+
+function widgetErrorMessage(code: WidgetToggleError): string {
+  if (code === 'no_tab') return 'Не найдена активная вкладка';
+  return `Виджет доступен только на странице звонка (${SUPPORTED_PLATFORMS})`;
+}
 
 function EyeIcon({ off }: { off: boolean }) {
   return (
@@ -29,6 +39,27 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [widgetVisible, setWidgetVisible] = useState(false);
+  const [onCallPage, setOnCallPage] = useState(false);
+  const [widgetError, setWidgetError] = useState<string | null>(null);
+  const [autoShow, setAutoShow] = useState(AUTO_SHOW_WIDGET_DEFAULT);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function initWidgetControls() {
+      const [state, enabled] = await Promise.all([readWidgetState(), getAutoShowWidget()]);
+      if (cancelled) return;
+      setWidgetVisible(state?.visible === true);
+      setOnCallPage(Boolean(state?.platform));
+      setAutoShow(enabled);
+    }
+
+    void initWidgetControls();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -81,6 +112,24 @@ export default function App() {
     }
   }
 
+  async function handleToggleWidget() {
+    setWidgetError(null);
+    const result = await toggleWidget();
+    if (result.error) {
+      setWidgetError(widgetErrorMessage(result.error));
+      return;
+    }
+    setWidgetVisible(result.action === 'shown');
+    setOnCallPage(true);
+  }
+
+  async function handleAutoShowChange(enabled: boolean) {
+    setAutoShow(enabled);
+    await setAutoShowWidget(enabled);
+    // Switching it on mounts the widget right away on an open call page.
+    if (enabled && onCallPage) setWidgetVisible(true);
+  }
+
   async function handleSignOut() {
     await signOut();
     setEmail('');
@@ -104,6 +153,21 @@ export default function App() {
         <p className="skribo-account">
           Вошли как <strong>{email}</strong>
         </p>
+        <button type="button" className="skribo-button" onClick={handleToggleWidget}>
+          {widgetVisible ? 'Скрыть виджет' : 'Показать виджет'}
+        </button>
+        {widgetError && <p className="skribo-error">{widgetError}</p>}
+        <label className="skribo-setting">
+          <input
+            type="checkbox"
+            checked={autoShow}
+            onChange={(e) => void handleAutoShowChange(e.target.checked)}
+          />
+          <span>
+            Показывать виджет автоматически
+            <span className="skribo-hint">на страницах звонков ({SUPPORTED_PLATFORMS})</span>
+          </span>
+        </label>
         <a
           className="skribo-link"
           href={__CABINET_URL__}

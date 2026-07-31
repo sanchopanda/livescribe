@@ -3,6 +3,7 @@
 
 import { createPlatformAdapter } from './platform/platform-adapter';
 import { RecordingController } from './recording/recording-controller';
+import { AUTO_SHOW_WIDGET_KEY, getAutoShowWidget } from '../settings/widget-settings';
 
 console.log('LiveScribe content script loaded');
 console.log('[LiveScribe] content build marker: 2026-02-20-track-transcriber-diagnostics');
@@ -49,6 +50,13 @@ let lastFinalTimestamp: number | null = null;
 let triggers: string[] = [];
 
 const REPLICA_MERGE_PAUSE_MS = 3000;
+
+// Minimums for the expanded widget. They have to be lifted while it is collapsed, otherwise
+// `min-*` clamps the collapsed width/height and the "minimized" widget stays full-size.
+const WIDGET_MIN_WIDTH = 200;
+const WIDGET_MIN_HEIGHT = 240;
+const WIDGET_COLLAPSED_WIDTH = 120;
+const WIDGET_COLLAPSED_HEIGHT = 40;
 
 function clearTranscriptState(): void {
   transcriptReplicas = [];
@@ -684,8 +692,8 @@ function createUIWidget() {
     top: ${clampedTop}px;
     width: ${size.width}px;
     height: ${size.height}px;
-    min-width: 200px;
-    min-height: 240px;
+    min-width: ${WIDGET_MIN_WIDTH}px;
+    min-height: ${WIDGET_MIN_HEIGHT}px;
     max-width: 800px;
     max-height: 600px;
     z-index: 999999;
@@ -1024,8 +1032,8 @@ function setupResize(widget: HTMLElement): void {
     if (!isResizing) return;
     const deltaX = e.clientX - startX;
     const deltaY = e.clientY - startY;
-    const newWidth = Math.max(200, Math.min(800, startWidth + deltaX));
-    const newHeight = Math.max(240, Math.min(600, startHeight + deltaY));
+    const newWidth = Math.max(WIDGET_MIN_WIDTH, Math.min(800, startWidth + deltaX));
+    const newHeight = Math.max(WIDGET_MIN_HEIGHT, Math.min(600, startHeight + deltaY));
     widget.style.width = `${newWidth}px`;
     widget.style.height = `${newHeight}px`;
   });
@@ -1051,13 +1059,18 @@ function toggleMinimize(): void {
   saveMinimizedState(isMinimized);
 
   if (isMinimized) {
-    widget.style.width = '120px';
-    widget.style.height = '40px';
+    // Lift the expanded minimums first — they would clamp the collapsed size otherwise.
+    widget.style.minWidth = '0';
+    widget.style.minHeight = '0';
+    widget.style.width = `${WIDGET_COLLAPSED_WIDTH}px`;
+    widget.style.height = `${WIDGET_COLLAPSED_HEIGHT}px`;
     content.style.display = 'none';
     resizeHandle.style.display = 'none';
     minimizeBtn.textContent = '▲';
   } else {
     const size = getWidgetSize();
+    widget.style.minWidth = `${WIDGET_MIN_WIDTH}px`;
+    widget.style.minHeight = `${WIDGET_MIN_HEIGHT}px`;
     widget.style.width = `${size.width}px`;
     widget.style.height = `${size.height}px`;
     content.style.display = 'flex';
@@ -1065,6 +1078,29 @@ function toggleMinimize(): void {
     minimizeBtn.textContent = '▼';
   }
 }
+
+function isWidgetVisible(): boolean {
+  return document.getElementById('livescribe-widget') !== null;
+}
+
+// Auto-show is opt-in (popup setting) and only makes sense on a supported call page —
+// the content script also runs on YouTube, where there is nothing to transcribe.
+async function autoShowWidgetIfEnabled(): Promise<void> {
+  if (isWidgetVisible()) return;
+  if (!platformAdapter.getPlatform()) return;
+  if (!(await getAutoShowWidget())) return;
+  createUIWidget();
+}
+
+void autoShowWidgetIfEnabled();
+
+// React to the setting being switched on while a call page is already open.
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local' || !changes[AUTO_SHOW_WIDGET_KEY]) return;
+  if (changes[AUTO_SHOW_WIDGET_KEY].newValue === true) {
+    void autoShowWidgetIfEnabled();
+  }
+});
 
 // Close widget
 function closeWidget(): void {
@@ -1335,6 +1371,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       console.log('Widget created');
       sendResponse({ success: true, action: 'shown' });
     }
+    return true;
+  }
+
+  // Lets the popup label its button correctly instead of guessing the widget state.
+  if (message.type === 'CONTENT_WIDGET_STATE') {
+    sendResponse({ visible: isWidgetVisible(), platform: platformAdapter.getPlatform() ?? null });
     return true;
   }
 

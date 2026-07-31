@@ -2,6 +2,10 @@
 // Coordinates between popup and offscreen document
 
 import { getPlatformCapabilities, resolveAudioMode } from '../platform/audio-mode-capabilities';
+import {
+  TOGGLE_WIDGET_IN_ACTIVE_TAB,
+  type WidgetToggleResult,
+} from '../messaging/widget-messages';
 
 declare const __API_URL__: string;
 
@@ -975,56 +979,57 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true; // async response
   }
 
+  if (message.type === TOGGLE_WIDGET_IN_ACTIVE_TAB) {
+    (async () => {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) {
+        sendResponse({ error: 'no_tab' } satisfies WidgetToggleResult);
+        return;
+      }
+      sendResponse(await toggleWidgetInTab(tab.id));
+    })();
+    return true; // async response
+  }
+
   return false;
 });
 
-// Handle extension icon click - toggle widget visibility
-chrome.action.onClicked.addListener(async (tab) => {
-  if (!tab.id) {
-    console.error('No tab ID available');
-    return;
-  }
-  
-  console.log('Extension icon clicked, tab ID:', tab.id);
-  
+// Show/hide the in-page widget. The content script is normally already there (declared in the
+// manifest), but on a page that was open before install/reload it is missing — inject it from
+// the runtime manifest and retry once.
+async function toggleWidgetInTab(tabId: number): Promise<WidgetToggleResult> {
   try {
-    // Send message to content script to toggle widget
-    const response = await chrome.tabs.sendMessage(tab.id, { type: 'CONTENT_TOGGLE_WIDGET' });
-    console.log('Widget toggled:', response);
-  } catch (err) {
-    console.error('Failed to toggle widget:', err);
-    // Content script might not be loaded, try to inject matching content-script files from runtime manifest
-    try {
-      const manifest = chrome.runtime.getManifest();
-      const contentScriptEntry = manifest.content_scripts?.find((entry) =>
-        entry.js?.some((scriptPath) => scriptPath.includes('content.js')),
-      );
-
-      if (!contentScriptEntry?.js?.length) {
-        console.error('No content script entry found in manifest for fallback injection');
-        return;
-      }
-
-      console.log('Attempting to inject content script files:', contentScriptEntry.js);
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: contentScriptEntry.js,
-      });
-      console.log('Content script injected, waiting before toggle...');
-      // Wait a bit and try again
-      setTimeout(async () => {
-        try {
-          const response = await chrome.tabs.sendMessage(tab.id!, { type: 'CONTENT_TOGGLE_WIDGET' });
-          console.log('Widget toggled after injection:', response);
-        } catch (e) {
-          console.error('Failed to toggle widget after injection:', e);
-        }
-      }, 500);
-    } catch (injectErr) {
-      console.error('Failed to inject content script:', injectErr);
-    }
+    const response = await chrome.tabs.sendMessage(tabId, { type: 'CONTENT_TOGGLE_WIDGET' });
+    return { action: response?.action === 'hidden' ? 'hidden' : 'shown' };
+  } catch {
+    // fall through to injection
   }
-});
+
+  const manifest = chrome.runtime.getManifest();
+  const contentScriptEntry = manifest.content_scripts?.find((entry) =>
+    entry.js?.some((scriptPath) => scriptPath.includes('content.js')),
+  );
+  if (!contentScriptEntry?.js?.length) {
+    console.error('No content script entry found in manifest for fallback injection');
+    return { error: 'no_content_script' };
+  }
+
+  try {
+    await chrome.scripting.executeScript({ target: { tabId }, files: contentScriptEntry.js });
+  } catch (injectErr) {
+    // Chrome refuses injection on unsupported pages (chrome://, Web Store, PDF viewer…).
+    console.error('Failed to inject content script:', injectErr);
+    return { error: 'unsupported_page' };
+  }
+
+  try {
+    const response = await chrome.tabs.sendMessage(tabId, { type: 'CONTENT_TOGGLE_WIDGET' });
+    return { action: response?.action === 'hidden' ? 'hidden' : 'shown' };
+  } catch (err) {
+    console.error('Failed to toggle widget after injection:', err);
+    return { error: 'no_content_script' };
+  }
+}
 
 // Keep service worker alive periodically
 chrome.alarms.create('keepAlive', { periodInMinutes: 0.5 });
