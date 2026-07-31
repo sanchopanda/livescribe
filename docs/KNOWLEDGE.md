@@ -25,7 +25,10 @@
   регистрацию MAIN-world скриптов в `packages/extension/public/manifest.json` и entry в
   `vite.config.ts`.
 - **Пороги per-track VAD** (дефолты): `rmsOn=0.02`, `rmsOff=0.01`, `peakOverride=0.12`,
-  hangover `1000ms`, pre-roll `500ms` (буфер до открытия, чтобы не срезать начало речи).
+  hangover `1000ms` — в `content/per-track/core/vad.ts`; pre-roll `1500ms` (буфер до открытия
+  гейта, чтобы не срезать начало речи) вместе с самим кольцевым буфером — в
+  `content/per-track/core/pre-roll.ts`. Оба общие для всех платформ: раньше `PRE_ROLL_MS` был
+  продублирован в meet- и pachca-транскрайберах и мог разъехаться.
 - **Speaker labeling** — сейчас DOM-only (имена участников из DOM платформы). Экспериментальные
   WebRTC/диаризация — в [`SPEAKER_DETECTION_ARCHIVE.md`](SPEAKER_DETECTION_ARCHIVE.md).
 

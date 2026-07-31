@@ -26,7 +26,10 @@ Chrome extension for real-time transcription in video calls.
 - `rmsOff = 0.01`
 - `peakOverride = 0.12`
 - `hangoverMs = 1000`
-- `preRollMs = 500` (audio before VAD open is buffered and sent)
+- `preRollMs = 1500` (audio before VAD open is buffered and sent)
+
+Thresholds live in `src/content/per-track/core/vad.ts`, the pre-roll window and its buffer in
+`src/content/per-track/core/pre-roll.ts` — one place for every platform.
 
 ## Development
 

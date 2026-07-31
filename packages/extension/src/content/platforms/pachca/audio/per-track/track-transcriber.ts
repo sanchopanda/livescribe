@@ -1,5 +1,10 @@
 import { analyzeChunkSignal } from '../../../../per-track/core/audio-signal';
 import { decideVad, type TrackVadState } from '../../../../per-track/core/vad';
+import {
+  PRE_ROLL_MS,
+  PreRollBuffer,
+  type BufferedTrackChunk,
+} from '../../../../per-track/core/pre-roll';
 
 interface PachcaTrackOwner {
   participantId: string;
@@ -34,19 +39,8 @@ interface ChunkTrackStats {
   maxPeak: number;
 }
 
-interface BufferedTrackChunk {
-  chunk: ArrayBuffer;
-  byteLength: number;
-}
-
 const RESCAN_INTERVAL_MS = 1500;
 const AUDIO_LEVEL_SEND_INTERVAL_MS = 200;
-const PRE_ROLL_MS = 500;
-const PRE_ROLL_SAMPLE_RATE = 16000;
-const PRE_ROLL_CHANNELS = 1;
-const PRE_ROLL_BYTES_PER_SAMPLE = 2;
-const PRE_ROLL_MAX_BYTES =
-  PRE_ROLL_SAMPLE_RATE * PRE_ROLL_CHANNELS * PRE_ROLL_BYTES_PER_SAMPLE * (PRE_ROLL_MS / 1000);
 const TRACK_DEBUG = localStorage.getItem('livescribe-track-transcriber-debug') !== '0';
 const WEBRTC_REGISTRY_SELECTOR = 'audio[data-livescribe-source="webrtc-registry"]';
 
@@ -182,8 +176,7 @@ export class PachcaTrackTranscriber {
   private chunkStatsByTrackId = new Map<string, ChunkTrackStats>();
   private vadStateByTrackId = new Map<string, TrackVadState>();
   private lastLevelSentAtByTrackId = new Map<string, number>();
-  private preRollChunksByTrackId = new Map<string, BufferedTrackChunk[]>();
-  private preRollBytesByTrackId = new Map<string, number>();
+  private readonly preRoll = new PreRollBuffer();
 
   async start(sessionId: string): Promise<void> {
     if (this.running) {
@@ -299,8 +292,7 @@ export class PachcaTrackTranscriber {
     this.chunkStatsByTrackId.clear();
     this.vadStateByTrackId.clear();
     this.lastLevelSentAtByTrackId.clear();
-    this.preRollChunksByTrackId.clear();
-    this.preRollBytesByTrackId.clear();
+    this.preRoll.clear();
     this.lastMainWorldSnapshotSignature = null;
   }
 
@@ -488,39 +480,16 @@ export class PachcaTrackTranscriber {
         participantId: capture.participantId,
         speaker: capture.speaker,
       });
-      this.preRollChunksByTrackId.delete(track.id);
-      this.preRollBytesByTrackId.delete(track.id);
+      this.preRoll.drop(track.id);
     });
   }
 
   private bufferPreRollChunk(trackId: string, chunk: ArrayBuffer): void {
-    const clonedChunk = chunk.slice(0);
-    const chunkInfo: BufferedTrackChunk = {
-      chunk: clonedChunk,
-      byteLength: clonedChunk.byteLength,
-    };
-
-    const chunks = this.preRollChunksByTrackId.get(trackId) || [];
-    chunks.push(chunkInfo);
-    this.preRollChunksByTrackId.set(trackId, chunks);
-
-    const currentBytes = this.preRollBytesByTrackId.get(trackId) || 0;
-    let totalBytes = currentBytes + chunkInfo.byteLength;
-
-    while (chunks.length > 0 && totalBytes > PRE_ROLL_MAX_BYTES) {
-      const removed = chunks.shift();
-      if (!removed) break;
-      totalBytes -= removed.byteLength;
-    }
-
-    this.preRollBytesByTrackId.set(trackId, Math.max(0, totalBytes));
+    this.preRoll.push(trackId, chunk);
   }
 
   private consumePreRollChunks(trackId: string): BufferedTrackChunk[] {
-    const chunks = this.preRollChunksByTrackId.get(trackId) || [];
-    this.preRollChunksByTrackId.delete(trackId);
-    this.preRollBytesByTrackId.delete(trackId);
-    return chunks;
+    return this.preRoll.consume(trackId);
   }
 
   private sendPcmChunkToOffscreen(
