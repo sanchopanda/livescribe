@@ -154,11 +154,31 @@
   эндпоинты. **Задеплоено**, 54 старые `.wav` удалены, `/recordings` на проде → 404; health/wss ок.
   Коммиты `cee04bb`+`61dbf7c`. Ключевая грабля — см. память про dotenv-timing.
 
+## Сделано (последнее, LS-18 + сборки)
+
+- **LS-18 (🐞 regression) — виджет со Start снова достижим.** Виджет создавался только из
+  `chrome.action.onClicked` (service-worker), но LS-11 добавил в манифест `default_popup` —
+  Chrome при наличии попапа `onClicked` не вызывает, поэтому виджет (и кнопка Start) не
+  показывались вообще ни на одной платформе. Фикс: тоггл вынесен в `toggleWidgetInTab()`
+  (с фолбэком на инъекцию контент-скрипта), попап шлёт `TOGGLE_WIDGET_IN_ACTIVE_TAB` и
+  показывает кнопку «Показать / Скрыть виджет» (лейбл — по реальному состоянию через
+  `CONTENT_WIDGET_STATE`). Плюс настройка «Показывать виджет автоматически»
+  (`skriboAutoShowWidget` в `chrome.storage.local`, по умолчанию **выкл**): контент-скрипт
+  сам монтирует виджет на поддерживаемой платформе при загрузке и при включении тумблера.
+- **Сборки расширения: флейвор ⟂ бэкенд.** К `BUILD_TARGET=dev|prod` добавлен независимый
+  `BACKEND=local|prod`; новая цель `npm run build:extension:dev-prod` → `dist-dev-prod/`
+  (dev-флейвор на `api.skribo.ru`), watch — `npm run dev:extension:prod`. Dev-сборки получают
+  суффикс в имени («Skribo (dev)» / «Skribo (dev → prod)»), чтобы все три уживались в Chrome
+  одновременно. `npm run build:extension` собирает все три.
+
 ## Следующее
 
 - Добавить на сервер `OPENROUTER_API_KEY` и SMTP-креды (+`APP_URL`) → рестарт → живая проверка
   анализа/саммари/сброса пароля.
-- LS-05: пользователь — аккаунт+$5, скриншоты, дашборд, подача. Подтвердить контакт в privacy.
+- **Подача в Chrome Web Store — трекер: [`docs/guides/chrome-web-store.md`](guides/chrome-web-store.md)**
+  (статус: не подано, код готов). Блокеры: ключи на проде (OPENROUTER + SMTP, иначе видимо
+  сломанные кнопки → отказ), проверка `dist-store` в живом Chrome, тестовый аккаунт +
+  test instructions. Дальше — аккаунт+$5, скриншоты, описание, подача.
 - Или новая фича из бэклога (LS-05 упаковка, LS-04 reconnect UX, LS-01/02 платформы, LS-13 self-host STT).
 - Опц. follow-up: рантайм-ребренд `livescribe-*` (DOM/storage/логи); LS-14 desktop-нотификация;
   LS-12 верификация email + rate-limit; ренейм GitHub-репо `livescribe`→`skribo`.

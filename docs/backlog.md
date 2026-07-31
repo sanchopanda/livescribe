@@ -96,13 +96,24 @@
   store-таргет сборки (`EXT_TARGET=store`: сужены host_permissions/matches/web_accessible_resources,
   вырезаны `platform-research` и YouTube; dev-сборка не тронута), `npm run pack:extension` → zip,
   публичная страница `/privacy` в кабинете (LIVE `https://app.skribo.ru/privacy`), гайд
-  `docs/guides/chrome-web-store.md`. Финальное ревью (opus) → merge. Осталось пользователю:
-  аккаунт+$5, скриншоты, заполнение дашборда, подача. Реальный логотип/локализация — follow-up.
+  `docs/guides/chrome-web-store.md`. Финальное ревью (opus) → merge. Реальный логотип/локализация
+  — follow-up. **Сама подача не сделана** — статус и чеклист ведутся в
+  `docs/guides/chrome-web-store.md` (там же блокеры: прод-ключи, проверка `dist-store`,
+  тестовый аккаунт для ревьюера).
 - [x] LS-15 — **🔒 Прод не пишет и не отдаёт сырое аудио.** Была утечка: бэкенд безусловно писал
   аудио звонков в `recordings/*.wav` и отдавал их публично без авторизации (`GET /recordings`,
   `/recordings/:filename`). Загейчено `recordingsEnabled()` (`NODE_ENV !== production`, ленивая
   проверка — dotenv грузит `.env` после init модуля): в проде запись и эндпоинты отключены, в
   dev/test — работают. Задеплоено, 54 старые записи удалены, `/recordings` на проде → 404.
+- [x] LS-18 — **🐞 Виджет со Start снова показывается + настройка автопоказа.** Регрессия от
+  LS-11: с появлением `default_popup` в манифесте Chrome перестал звать `action.onClicked`,
+  а это был единственный путь к `createUIWidget()` — виджет и кнопка Start стали недостижимы.
+  Кнопка «Показать / Скрыть виджет» переехала в попап (`TOGGLE_WIDGET_IN_ACTIVE_TAB` →
+  `toggleWidgetInTab()` в service-worker, с фолбэком на инъекцию контент-скрипта; лейбл — по
+  `CONTENT_WIDGET_STATE`). Автопоказ на страницах звонков — отдельная опция
+  `skriboAutoShowWidget` (по умолчанию выкл), применяется при загрузке страницы и при
+  включении тумблера. Сборки: `BACKEND=local|prod` независимо от `BUILD_TARGET`, цель
+  `build:extension:dev-prod` → `dist-dev-prod/`.
 - [x] LS-10 — **Ребрендинг livescribe → Skribo.** Механическое переименование
   идентификаторов пакетов на `@skribo/*` (были со старым префиксом), алиасы
   `vite.config`/`tsconfig`, упоминания в коде/живых доках. Имя репозитория на GitHub —
