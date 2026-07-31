@@ -2,7 +2,17 @@
   "permissions": {
     "allow": [
       "mcp__chrome-devtools__evaluate_script",
-      "Bash(npm run build:extension:*)"
+      "Bash(npm run build:extension:*)",
+      "Bash(xargs cat)",
+      "Bash(timeout 180 npm run type-check)",
+      "Bash(timeout 180 npm run type-check --workspace=@livescribe/extension)",
+      "Bash(git rm *)",
+      "Bash(npm run *)",
+      "Bash(git add *)",
+      "Bash(git commit -q -m ' *)",
+      "Bash(timeout 12 curl -s -o /dev/null -w 'HTTP %{http_code}\\\\n' --max-time 8 -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' -H 'Sec-WebSocket-Version: 13' https://api.skribo.ru/ws)",
+      "Bash(timeout 12 openssl s_client -connect api.skribo.ru:443 -servername api.skribo.ru)",
+      "Bash(openssl x509 *)"
     ]
   }
 }
