@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "lint": "eslint src --ext ts,tsx",
     "type-check": "tsc --noEmit",
-    "clean": "rm -rf dist dist-dev dist-store"
+    "clean": "rm -rf dist dist-dev dist-dev-prod dist-store"
   },
   "dependencies": {
     "@skribo/shared": "*",

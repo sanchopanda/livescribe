@@ -75,13 +75,27 @@ npm run build:backend
 npm run build:extension
 ```
 
+### Extension build variants
+
+Backend URLs are baked in at build time; the build flavor and the backend are independent:
+
+| Command | Backend | Output |
+| --- | --- | --- |
+| `npm run build:extension:prod` | `api.skribo.ru` | `packages/extension/dist/` |
+| `npm run build:extension:dev` | `localhost:3001` | `packages/extension/dist-dev/` |
+| `npm run build:extension:dev-prod` | `api.skribo.ru` | `packages/extension/dist-dev-prod/` |
+
+`npm run build:extension` builds all three. Override the URLs point-wise with
+`WS_URL` / `API_URL` / `CABINET_URL` (e.g. to reach a backend on the LAN).
+
 ## Extension Setup
 
 1. Build the extension: `npm run build:extension`
 2. Open Chrome and navigate to `chrome://extensions`
 3. Enable "Developer mode"
 4. Click "Load unpacked"
-5. Select `packages/extension/dist`
+5. Select `packages/extension/dist` (or `dist-dev` / `dist-dev-prod` — the dev builds are named
+   "Skribo (dev)" and "Skribo (dev → prod)" so they can be loaded side by side)
 
 ## Project Status
 

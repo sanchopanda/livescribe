@@ -34,15 +34,22 @@ Chrome extension for real-time transcription in video calls.
 # Install dependencies (from repo root)
 npm install
 
-# Extension watch mode
+# Extension watch mode (→ dist-dev/, localhost backend)
 npm run dev:extension
+
+# Same, but pointed at the live backend (→ dist-dev-prod/)
+npm run dev:extension:prod
 
 # Full dev (backend + extension)
 npm run dev
 
-# Production build
+# All build variants (prod → dist/, dev → dist-dev/, dev+live backend → dist-dev-prod/)
 npm run build:extension
 ```
+
+Backend URLs are baked in at build time by `vite.config.ts`: `BUILD_TARGET` (`prod` default /
+`dev`) picks the flavor and output folder, `BACKEND` (`local` / `prod`) picks the URLs, and
+`WS_URL` / `API_URL` / `CABINET_URL` override them point-wise (e.g. a LAN IP).
 
 ## Loading in Chrome
 
@@ -50,7 +57,8 @@ npm run build:extension
 2. Open `chrome://extensions`
 3. Enable "Developer mode"
 4. Click "Load unpacked"
-5. Select `packages/extension/dist`
+5. Select `packages/extension/dist` — or `dist-dev` / `dist-dev-prod`, which install as
+   "Skribo (dev)" / "Skribo (dev → prod)" and can coexist with the prod build
 
 ## Permissions
 

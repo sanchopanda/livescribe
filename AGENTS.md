@@ -35,11 +35,27 @@ npm run type-check
 npm run lint
 ```
 
+### Extension build variants
+
+Backend URLs are baked in at build time. The build flavor (`BUILD_TARGET`) and the backend it
+talks to (`BACKEND`) are independent:
+
+| Command | Flavor | Backend | Output | Name in Chrome |
+| --- | --- | --- | --- | --- |
+| `build:extension:prod` | prod | `api.skribo.ru` | `dist/` | Skribo |
+| `build:extension:dev` | dev | `localhost:3001` | `dist-dev/` | Skribo (dev) |
+| `build:extension:dev-prod` | dev | `api.skribo.ru` | `dist-dev-prod/` | Skribo (dev → prod) |
+| `pack:extension` | store | `api.skribo.ru` | `dist-store/` + zip | Skribo |
+
+`npm run build:extension` builds the first three. `WS_URL`/`API_URL`/`CABINET_URL` override the
+URLs point-wise (e.g. a LAN IP), `EXT_OUT` overrides the output folder.
+
 ### Loading the Extension in Chrome
 1. Build: `npm run build:extension`
 2. Navigate to `chrome://extensions`
 3. Enable "Developer mode"
-4. Click "Load unpacked" and select `packages/extension/dist`
+4. Click "Load unpacked" and select the folder for the variant you need (`packages/extension/dist`
+   for prod). The dev flavors carry a suffixed name, so all three can be loaded side by side.
 
 ## Architecture
 

@@ -4,21 +4,40 @@ import { crx } from '@crxjs/vite-plugin';
 import manifest from './public/manifest.json';
 import path from 'path';
 
-// Build target selects both the backend URLs (baked in at build time) and the output
-// folder. Default is 'prod' (api.skribo.ru → dist/); 'dev' targets localhost → dist-dev/.
-// Explicit WS_URL/API_URL/CABINET_URL still override. Set via `BUILD_TARGET=dev`.
+// Build target selects the build flavor: 'prod' (default) or 'dev' (dev-only entry points,
+// separate output folder). Set via `BUILD_TARGET=dev`.
 const BUILD_TARGET = process.env.BUILD_TARGET || 'prod';
 const IS_DEV = BUILD_TARGET === 'dev';
-const WS_URL = process.env.WS_URL || (IS_DEV ? 'ws://localhost:3001/ws' : 'wss://api.skribo.ru/ws');
-const API_URL = process.env.API_URL || (IS_DEV ? 'http://localhost:3001' : 'https://api.skribo.ru');
-const CABINET_URL = process.env.CABINET_URL || (IS_DEV ? 'http://localhost:5173' : 'https://app.skribo.ru');
+
+// Backend target selects the URLs baked in at build time, independently of the flavor:
+// 'local' (localhost) or 'prod' (skribo.ru). Defaults to local for dev, prod otherwise —
+// so `BACKEND=prod BUILD_TARGET=dev` gives a dev build pointed at the live backend.
+// Explicit WS_URL/API_URL/CABINET_URL still override.
+const BACKEND = process.env.BACKEND || (IS_DEV ? 'local' : 'prod');
+const IS_LOCAL_BACKEND = BACKEND === 'local';
+const WS_URL =
+  process.env.WS_URL || (IS_LOCAL_BACKEND ? 'ws://localhost:3001/ws' : 'wss://api.skribo.ru/ws');
+const API_URL =
+  process.env.API_URL || (IS_LOCAL_BACKEND ? 'http://localhost:3001' : 'https://api.skribo.ru');
+const CABINET_URL =
+  process.env.CABINET_URL || (IS_LOCAL_BACKEND ? 'http://localhost:5173' : 'https://app.skribo.ru');
 
 const EXT_TARGET = process.env.EXT_TARGET;
-// Output folder: store build → dist-store/, dev → dist-dev/, prod (default) → dist/.
-const OUT_DIR = process.env.EXT_OUT || (EXT_TARGET === 'store' ? 'dist-store' : IS_DEV ? 'dist-dev' : 'dist');
+// Output folder: store build → dist-store/, dev → dist-dev/ (dist-dev-prod/ when it targets
+// the live backend), prod (default) → dist/.
+const DEV_OUT_DIR = IS_LOCAL_BACKEND ? 'dist-dev' : 'dist-dev-prod';
+const OUT_DIR =
+  process.env.EXT_OUT || (EXT_TARGET === 'store' ? 'dist-store' : IS_DEV ? DEV_OUT_DIR : 'dist');
 
 function activeManifest() {
-  if (EXT_TARGET !== 'store') return manifest;
+  if (EXT_TARGET !== 'store') {
+    if (!IS_DEV) return manifest;
+    // Dev flavors are loaded unpacked alongside each other — suffix the name so they are
+    // told apart in chrome://extensions and in the toolbar.
+    const dev = JSON.parse(JSON.stringify(manifest)) as typeof manifest;
+    dev.name = IS_LOCAL_BACKEND ? 'Skribo (dev)' : 'Skribo (dev → prod)';
+    return dev;
+  }
   const m = JSON.parse(JSON.stringify(manifest)) as typeof manifest;
   m.host_permissions = [
     'https://api.skribo.ru/*',
