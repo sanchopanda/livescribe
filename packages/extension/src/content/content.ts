@@ -58,8 +58,18 @@ const REPLICA_MERGE_PAUSE_MS = 3000;
 // `min-*` clamps the collapsed width/height and the "minimized" widget stays full-size.
 const WIDGET_MIN_WIDTH = 200;
 const WIDGET_MIN_HEIGHT = 240;
+const WIDGET_MAX_WIDTH = 800;
 const WIDGET_COLLAPSED_WIDTH = 120;
 const WIDGET_COLLAPSED_HEIGHT = 40;
+
+/**
+ * Height is not capped — the widget grows as tall as the user drags it. The only bound is the
+ * viewport: past it the resize handle (bottom-right corner) would leave the screen and there
+ * would be no way to drag the widget back to a usable size.
+ */
+function maxWidgetHeightAt(topPx: number): number {
+  return Math.max(WIDGET_MIN_HEIGHT, window.innerHeight - topPx);
+}
 
 function clearTranscriptState(): void {
   transcriptReplicas = [];
@@ -678,8 +688,10 @@ function createUIWidget() {
 
   const position = getWidgetPosition();
   const size = getWidgetSize();
+  // A size saved on a bigger screen must not leave the resize handle off-view here.
+  const height = Math.max(WIDGET_MIN_HEIGHT, Math.min(size.height, window.innerHeight));
   const clampedLeft = Math.max(0, Math.min(window.innerWidth - size.width, position.x));
-  const clampedTop = Math.max(0, Math.min(window.innerHeight - size.height, position.y));
+  const clampedTop = Math.max(0, Math.min(window.innerHeight - height, position.y));
 
   if (clampedLeft !== position.x || clampedTop !== position.y) {
     saveWidgetPosition(clampedLeft, clampedTop);
@@ -694,11 +706,10 @@ function createUIWidget() {
     left: ${clampedLeft}px;
     top: ${clampedTop}px;
     width: ${size.width}px;
-    height: ${size.height}px;
+    height: ${height}px;
     min-width: ${WIDGET_MIN_WIDTH}px;
     min-height: ${WIDGET_MIN_HEIGHT}px;
-    max-width: 800px;
-    max-height: 600px;
+    max-width: ${WIDGET_MAX_WIDTH}px;
     z-index: 999999;
     background: white;
     border: 2px solid #3b82f6;
@@ -766,8 +777,10 @@ function createUIWidget() {
     </div>
     <div id="livescribe-content" style="
       flex: 1;
+      min-height: 0;
       padding: 12px;
-      overflow: hidden;
+      overflow-y: auto;
+      overflow-x: hidden;
       display: flex;
       flex-direction: column;
     ">
@@ -1028,6 +1041,7 @@ function setupResize(widget: HTMLElement): void {
   let startY = 0;
   let startWidth = 0;
   let startHeight = 0;
+  let startTopPx = 0;
 
   resizeHandle.addEventListener('mousedown', (e) => {
     isResizing = true;
@@ -1035,6 +1049,7 @@ function setupResize(widget: HTMLElement): void {
     startY = e.clientY;
     startWidth = widget.offsetWidth;
     startHeight = widget.offsetHeight;
+    startTopPx = widget.getBoundingClientRect().top;
     e.preventDefault();
     e.stopPropagation();
   });
@@ -1043,8 +1058,11 @@ function setupResize(widget: HTMLElement): void {
     if (!isResizing) return;
     const deltaX = e.clientX - startX;
     const deltaY = e.clientY - startY;
-    const newWidth = Math.max(WIDGET_MIN_WIDTH, Math.min(800, startWidth + deltaX));
-    const newHeight = Math.max(WIDGET_MIN_HEIGHT, Math.min(600, startHeight + deltaY));
+    const newWidth = Math.max(WIDGET_MIN_WIDTH, Math.min(WIDGET_MAX_WIDTH, startWidth + deltaX));
+    const newHeight = Math.max(
+      WIDGET_MIN_HEIGHT,
+      Math.min(maxWidgetHeightAt(startTopPx), startHeight + deltaY),
+    );
     widget.style.width = `${newWidth}px`;
     widget.style.height = `${newHeight}px`;
   });
