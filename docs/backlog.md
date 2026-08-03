@@ -83,14 +83,39 @@
 
 - [ ] LS-01 — **Zoom per-track.** MAIN-world WebRTC-хук, per-track transcriber и speaker-DOM
   для Zoom; включить capabilities (сейчас у zoom всё `false`, только mixed).
-- [ ] LS-02 — **Teams per-track.** У Teams уже есть speaker-DOM; добавить WebRTC-хук и
-  per-track пайплайн, включить `supportsPerTrackAudioMode`/`supportsMainWorldWebRTCHook`.
+- [x] LS-02 — **Teams per-track — НЕ ПРИМЕНИМО.** Разведка зондом в живом звонке (2026-08-03,
+  `teams.cloud.microsoft`, 3+ участника, три снимка за 10 мин) показала: Teams сводит звук
+  **на сервере**. Один активный peer-connection, `audioReceivers: 1`, один `inbound-rtp` —
+  `ssrc 67003`, `trackIdentifier: "mainAudio-67003"`. Решающий замер: **при смене говорящего**
+  (Gevorg → Dmitriy, `domSpeaker` переключился корректно) `ssrc`/`mid`/число ресиверов не
+  изменились, а пакеты продолжили расти на том же потоке (+17 297 за 10:17, `audioLevel`
+  0.09 → 0.40 → 0.56). При per-track голос нового участника пришёл бы по своему `ssrc`.
+  Разделять нечего: ресиверы создаются на каждого отправляющего (как у Meet/Pachca), и даже
+  слотовый SFU дал бы 2–3 ресивера. Привязки трека к плитке тоже нет — `attributeMatches`
+  пуст на 882 просканированных элементах, аналога `data-ssrc` от Meet у Teams не существует.
+  Отчёт разведки — в `docs/KNOWLEDGE.md`.
+  **Teams остаётся mixed + speaker-DOM** (capabilities уже так и настроены, код менять не надо).
+  Теоретический путь — Teams Premium spatial audio, но это десктоп-клиент, не веб.
   - [x] Инструмент разведки: WebRTC-зонд в dev-сборке (секция «🔬 Research (dev)» в виджете,
     снимки + JSON). Спека — `docs/superpowers/specs/2026-07-31-webrtc-research-probe-design.md`.
-  - [ ] **Прогнать зонд в живом звонке Teams (≥3 участника)** — go/no-go: сколько входящих
-    аудио-потоков, есть ли в DOM атрибут со `ssrc`/`trackIdentifier`, медиа в iframe или нет.
-    Если поток один — Teams остаётся mixed-only, задача закрывается как «не применимо».
-  - [ ] По итогам отчёта — объём per-track пайплайна (зеркало `platforms/meet/`).
+    Переиспользуется для LS-01 (Zoom).
+- [x] LS-19 — **Speaker-DOM Teams почищен.** `participantId` берётся из `data-tid` (UPN,
+  переживает ре-рендер) с фолбэком на `data-acc-element-id`; плитки
+  `data-stream-type="ScreenSharing"` пропускаются при поиске говорящего, а их формат
+  `aria-label` («Общий контент от пользователя X» / «Content shared by X») разбирается
+  отдельно — раньше такая подпись целиком уехала бы в имя спикера. Чистые функции покрыты
+  тестами (`active-speaker-dom.test.ts`).
+- [x] LS-20 — **Спикер по времени сегмента, а не по времени доставки.** Раньше реплике
+  клеился тот, кто говорит в момент прихода результата от Deepgram; при лаге STT 0.5–3 с
+  фраза уезжала не тому. Теперь: `STTResult` несёт `startSec`/`durationSec` (из `payload.start`
+  / `payload.duration` Deepgram), сессия ведёт таймлайн смен спикера с **серверными** метками
+  приёма (синхронизация часов не нужна), сегмент атрибутируется по времени начала с допуском
+  750 мс на запаздывание DOM-индикатора. Фолбэк на прежнее поведение, если таймингов нет.
+  Чинит Teams и Zoom (mixed); per-track не затронут — там спикер едет с дорожкой.
+  Тесты: `speaker-timeline.test.ts` + `handler-speaker.test.ts`.
+- [x] LS-21 — **`resolveAudioMode` решает по capabilities.** Был дефолт «если не mixed, то
+  per-track» — для платформы без per-track (Teams, Zoom, неизвестный хост) это описывало
+  несуществующий пайплайн. Теперь платформа без `supportsPerTrackAudioMode` всегда `mixed`.
 - [ ] LS-03 — **Хардненинг авто-детекта платформы.** Проверить надёжность `platform-detector`
   на всех поддерживаемых доменах и обновить `manifest.json` matches.
 
