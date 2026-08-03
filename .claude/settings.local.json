@@ -17,7 +17,9 @@
       "Bash(echo \"type-check exit=$?\")",
       "Bash(echo \"test exit=$?\")",
       "Bash(echo \"build exit=$?\")",
-      "Bash(python3 *)"
+      "Bash(python3 *)",
+      "Bash(echo \"build \\(shared+backend+extension\\) exit=$?\")",
+      "Bash(echo \"build:extension exit=$?\")"
     ]
   }
 }
