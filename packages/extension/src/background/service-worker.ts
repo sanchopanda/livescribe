@@ -323,7 +323,7 @@ async function recoverPerTrackSession(reason: string): Promise<void> {
 // Helper function for offscreen recording
 function startRecordingOffscreen(message: any, sendResponse: (response: any) => void) {
   const platformCapabilities = getPlatformCapabilities(message.platform);
-  const audioMode = resolveAudioMode(message.audioMode);
+  const audioMode = resolveAudioMode(message.audioMode, message.platform);
   currentAudioMode = audioMode;
   resetAudioLevels();
   broadcastAudioLevels();
@@ -696,7 +696,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (sender.tab?.id) {
       recordingTabId = sender.tab.id;
     }
-    currentAudioMode = resolveAudioMode(message.audioMode);
+    currentAudioMode = resolveAudioMode(message.audioMode, message.platform);
     activeRecordingStartMessage = {
       language: message.language,
       platform: message.platform,

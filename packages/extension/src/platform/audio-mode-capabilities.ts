@@ -55,10 +55,18 @@ export function supportsPerTrackAudioMode(platform: PlatformForStart): boolean {
   return getPlatformCapabilities(platform).supportsPerTrackAudioMode;
 }
 
-export function resolveAudioMode(audioMode: AudioMode | undefined): AudioMode {
-  if (audioMode === 'mixed') {
+/**
+ * The effective capture mode. A platform that cannot do per-track is always mixed, whatever
+ * the caller asked for — defaulting an unknown or per-track-less platform to 'per-track' would
+ * describe a pipeline that does not exist there (Teams mixes audio server-side, for instance).
+ */
+export function resolveAudioMode(
+  audioMode: AudioMode | undefined,
+  platform?: PlatformForStart,
+): AudioMode {
+  if (!supportsPerTrackAudioMode(platform)) {
     return 'mixed';
   }
 
-  return 'per-track';
+  return audioMode === 'mixed' ? 'mixed' : 'per-track';
 }
