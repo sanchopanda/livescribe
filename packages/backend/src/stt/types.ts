@@ -6,6 +6,13 @@ export interface STTResult {
   confidence?: number;
   language?: string;
   speaker?: string;
+  /**
+   * Where this segment sits in the audio stream, in seconds from its start. Streaming results
+   * arrive a second or three after the words were spoken, so this is what lets the caller
+   * attribute a segment to whoever was speaking *then* rather than now.
+   */
+  startSec?: number;
+  durationSec?: number;
 }
 
 export type STTResultCallback = (result: STTResult) => void;

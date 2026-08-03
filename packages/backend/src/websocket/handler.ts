@@ -5,9 +5,37 @@ import { createSTTProvider } from '../stt/index.js';
 import type { STTProviderType } from '../stt/index.js';
 import { prisma } from '../db/prisma.js';
 import { hashToken } from '../auth/tokens.js';
+import { appendSpeakerChange, pickSpeakerAt, segmentSpokenAt } from './speaker-timeline.js';
 
 const sessionManager = new SessionManager();
 let wsConnectionSequence = 0;
+
+type SessionLike = ReturnType<SessionManager['getSession']>;
+
+/**
+ * Speaker for a transcript segment in mixed capture. Streaming results lag the audio by a
+ * second or three, so the segment's own stream offset decides who was speaking — not the
+ * speaker who happens to be active when the result arrives. Falls back to the last known
+ * speaker when the segment carries no timing (or arrived before any speaker update).
+ *
+ * Mapping the offset onto wall-clock assumes the audio arrives continuously and in real time,
+ * which holds for mixed capture. Per-track capture is VAD-gated and does not need this: there
+ * the speaker travels with the track and arrives on `result.speaker`.
+ *
+ * Exported for tests.
+ */
+export function resolveSpeakerForSegment(session: SessionLike, result: any): string | undefined {
+  if (typeof result?.speaker === 'string' && result.speaker) return result.speaker;
+  if (!session) return undefined;
+
+  const spokenAt = segmentSpokenAt(session.sttStreamStartedAtMs, result?.startSec);
+  if (spokenAt !== undefined) {
+    const match = pickSpeakerAt(session.speakerTimeline, spokenAt);
+    if (match) return match.speaker ?? undefined;
+  }
+
+  return session.speaker ?? undefined;
+}
 
 // Get STT provider type - read from env at runtime, not at module load
 // This ensures dotenv.config() has been called first
@@ -209,7 +237,7 @@ export function registerWebSocketHandler(server: FastifyInstance) {
               // Create callback for real-time transcriptions (for streaming providers like Deepgram)
               const onResult = (result: any) => {
                 const session = sessionId ? sessionManager.getSession(sessionId) : undefined;
-                const resolvedSpeaker = session?.speaker ?? undefined;
+                const resolvedSpeaker = resolveSpeakerForSegment(session, result);
 
                 sendTranscript(result, resolvedSpeaker);
                 // server.log.debug(`Transcription (${result.isFinal ? 'final' : 'partial'}): ${result.text}`);
@@ -381,6 +409,11 @@ export function registerWebSocketHandler(server: FastifyInstance) {
             // Store audio chunk for saving to file
             sessionManager.addAudioChunk(sessionId, audioBuffer);
 
+            // Origin for Deepgram's segment offsets: the first chunk that reached the stream.
+            if (session.sttStreamStartedAtMs === undefined) {
+              session.sttStreamStartedAtMs = Date.now();
+            }
+
             // Process audio through STT (if available and initialized)
             if (session.sttProvider) {
               try {
@@ -389,6 +422,7 @@ export function registerWebSocketHandler(server: FastifyInstance) {
                 const sttResult = await session.sttProvider.processAudio(audioBuffer, format);
               
               if (sttResult && sttResult.text) {
+                const segmentSpeaker = resolveSpeakerForSegment(session, sttResult);
                 // Send transcription to client
                  const transcriptMessage: ServerMessage = sttResult.isFinal
                    ? {
@@ -396,14 +430,14 @@ export function registerWebSocketHandler(server: FastifyInstance) {
                        text: sttResult.text,
                        timestamp: Date.now(),
                        confidence: sttResult.confidence ?? 0,
-                       speaker: sttResult.speaker ?? session.speaker ?? undefined,
+                       speaker: segmentSpeaker,
                      }
                    : {
                        type: 'partial',
                        text: sttResult.text,
                        timestamp: Date.now(),
                        confidence: sttResult.confidence,
-                       speaker: sttResult.speaker ?? session.speaker ?? undefined,
+                       speaker: segmentSpeaker,
                      };
 
                 connection.send(JSON.stringify(transcriptMessage));
@@ -413,7 +447,7 @@ export function registerWebSocketHandler(server: FastifyInstance) {
                     sessionId,
                     isFinal: sttResult.isFinal,
                     textLength: sttResult.text.length,
-                    speaker: sttResult.speaker ?? session.speaker ?? null,
+                    speaker: segmentSpeaker ?? null,
                   },
                   'Session transcript sent',
                 );
@@ -447,6 +481,13 @@ export function registerWebSocketHandler(server: FastifyInstance) {
             }
 
             session.speaker = message.speaker ?? null;
+            // Timestamped on arrival: WebSocket lag is tens of milliseconds, so no clock
+            // synchronisation with the client is needed.
+            appendSpeakerChange(session.speakerTimeline, {
+              at: Date.now(),
+              speaker: session.speaker,
+              participantId: (message as any).participantId,
+            });
             server.log.info({ conn, sessionId, speaker: session.speaker }, 'Speaker update received');
             break;
           }

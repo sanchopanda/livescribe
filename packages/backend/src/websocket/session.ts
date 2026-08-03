@@ -4,6 +4,7 @@ import { writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import type { STTProvider } from '../stt/types.js';
 import { recordingsEnabled } from '../config.js';
+import type { SpeakerChange } from './speaker-timeline.js';
 
 interface Session {
   id: string;
@@ -14,7 +15,12 @@ interface Session {
   audioChunks: Buffer[];
   sttProvider: STTProvider | null;
   language: string;
+  /** Last known speaker — the fallback when a segment cannot be placed on the timeline. */
   speaker: string | null;
+  /** Speaker changes with server-side timestamps, see `speaker-timeline.ts`. */
+  speakerTimeline: SpeakerChange[];
+  /** When audio first reached the STT stream; the origin for Deepgram's segment offsets. */
+  sttStreamStartedAtMs?: number;
   userId?: string;
   meetingId?: string;
   startedAtMs?: number;
@@ -47,6 +53,7 @@ export class SessionManager {
       sttProvider,
       language,
       speaker: null,
+      speakerTimeline: [],
       userId: meta?.userId,
       meetingId: meta?.meetingId,
       startedAtMs: meta?.startedAtMs,

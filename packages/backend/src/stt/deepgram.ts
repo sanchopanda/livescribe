@@ -151,6 +151,10 @@ export class DeepgramSTT implements STTProvider {
             isFinal,
             confidence,
             language: this.langCode,
+            // Offsets into the stream — used to attribute the segment to the speaker who was
+            // active when it was spoken, not when it arrived.
+            startSec: typeof payload.start === 'number' ? payload.start : undefined,
+            durationSec: typeof payload.duration === 'number' ? payload.duration : undefined,
           };
 
           if (isFinal) {
