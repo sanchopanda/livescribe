@@ -95,6 +95,13 @@ function collectEndpointOwners(): Map<string, PachcaTrackOwner> {
   return endpointOwners;
 }
 
+/**
+ * The local microphone has no participant tile to read a name from — Pachca renders your own
+ * video without one. Labelling it "Вы" is what a reader of the transcript needs anyway.
+ */
+const SELF_OWNER: PachcaTrackOwner = { participantId: 'self', speaker: 'Вы' };
+const LOCAL_REGISTRY_SELECTOR = 'audio[data-livescribe-source="webrtc-registry"][data-local="true"]';
+
 function extractOwnerByTrackId(): Map<string, PachcaTrackOwner> {
   const result = new Map<string, PachcaTrackOwner>();
   const endpointOwners = collectEndpointOwners();
@@ -154,6 +161,19 @@ function extractOwnerByTrackId(): Map<string, PachcaTrackOwner> {
     stream.getAudioTracks().forEach((track) => {
       if (!track.id || result.has(track.id)) return;
       result.set(track.id, owner);
+    });
+  });
+
+  // Own microphone last, so it wins: the MAIN-world hook registers it from the sending side, and
+  // none of the lookups above can identify it. If the self-view tile happened to expose the same
+  // track, it would map it to a tile that carries no name — "Вы" is the useful label.
+  document.querySelectorAll<HTMLMediaElement>(LOCAL_REGISTRY_SELECTOR).forEach((mediaEl) => {
+    const stream = mediaEl.srcObject;
+    if (!(stream instanceof MediaStream)) return;
+
+    stream.getAudioTracks().forEach((track) => {
+      if (!track.id) return;
+      result.set(track.id, SELF_OWNER);
     });
   });
 

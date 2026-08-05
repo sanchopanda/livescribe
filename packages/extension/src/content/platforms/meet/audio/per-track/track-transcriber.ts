@@ -44,6 +44,13 @@ const RESCAN_INTERVAL_MS = 1500;
 const AUDIO_LEVEL_SEND_INTERVAL_MS = 200;
 const TRACK_DEBUG = localStorage.getItem('livescribe-track-transcriber-debug') !== '0';
 const WEBRTC_REGISTRY_SELECTOR = 'audio[data-livescribe-source="webrtc-registry"]';
+const LOCAL_REGISTRY_SELECTOR = `${WEBRTC_REGISTRY_SELECTOR}[data-local="true"]`;
+
+/**
+ * The local microphone has no participant tile to read a name from. Labelling it "Вы" is what a
+ * reader of the transcript needs anyway.
+ */
+const SELF_OWNER: MeetTrackOwner = { participantId: 'self', speaker: 'Вы' };
 const MEET_SOURCE = 'livescribe-meet-webrtc-tracks';
 
 function debugLog(...args: unknown[]): void {
@@ -134,6 +141,18 @@ function extractOwnerByTrackId(): Map<string, MeetTrackOwner> {
           }
         });
       });
+    });
+  });
+
+  // Own microphone last, so it wins: the MAIN-world hook registers it from the sending side, and
+  // none of the tile lookups above can identify it — Meet's self-view carries no usable name.
+  document.querySelectorAll<HTMLMediaElement>(LOCAL_REGISTRY_SELECTOR).forEach((mediaEl) => {
+    const stream = mediaEl.srcObject;
+    if (!(stream instanceof MediaStream)) return;
+
+    stream.getAudioTracks().forEach((track) => {
+      if (!track.id) return;
+      result.set(track.id, SELF_OWNER);
     });
   });
 

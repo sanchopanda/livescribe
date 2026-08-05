@@ -21,6 +21,8 @@
     streamId: string | null;
     ssrc: string | null;
     createdAt: number;
+    /** True for the local microphone — it has no ssrc and no participant tile. */
+    isLocal: boolean;
   };
 
   const peerConnections = new Set<RTCPeerConnection>();
@@ -31,6 +33,7 @@
       trackId: item.trackId,
       streamId: item.streamId,
       ssrc: item.ssrc,
+      isLocal: item.isLocal,
       createdAt: item.createdAt,
     }));
 
@@ -59,7 +62,11 @@
     return container;
   };
 
-  const ensureRegistryElement = (track: MediaStreamTrack, streamId: string | null): HTMLAudioElement => {
+  const ensureRegistryElement = (
+    track: MediaStreamTrack,
+    streamId: string | null,
+    isLocal = false,
+  ): HTMLAudioElement => {
     const container = ensureRegistryContainer();
     const elementId = `livescribe-webrtc-track-${track.id}`;
 
@@ -74,6 +81,9 @@
     }
 
     audioEl.setAttribute('data-track-id', track.id);
+    if (isLocal) {
+      audioEl.setAttribute('data-local', 'true');
+    }
     if (streamId) {
       audioEl.setAttribute('data-stream-id', streamId);
     } else {
@@ -137,6 +147,7 @@
       streamId,
       ssrc: null,
       createdAt: Date.now(),
+      isLocal: false,
     });
 
     console.log('[LiveScribe][Meet][WebRTCTracksMain] track added', {
@@ -167,8 +178,119 @@
     track.addEventListener('ended', () => removeTrack(track.id, 'track-ended'));
   };
 
+  /**
+   * The local microphone. It reaches us from the sending side, so there is no ssrc to resolve and
+   * no participant tile to match — it is marked local and the transcriber labels it as us.
+   */
+  const addLocalTrack = (track: MediaStreamTrack): void => {
+    if (!track || track.kind !== 'audio' || tracksById.has(track.id)) return;
+
+    tracksById.set(track.id, {
+      trackId: track.id,
+      streamId: null,
+      ssrc: null,
+      createdAt: Date.now(),
+      isLocal: true,
+    });
+
+    console.log('[LiveScribe][Meet][WebRTCTracksMain] local track added', {
+      trackId: track.id,
+      muted: track.muted,
+      enabled: track.enabled,
+      readyState: track.readyState,
+    });
+
+    ensureRegistryElement(track, null, true);
+    emitSnapshot('local-track-added');
+
+    track.addEventListener('ended', () => removeTrack(track.id, 'local-track-ended'));
+  };
+
+  // Own microphone: `ontrack` fires only for INBOUND tracks, so the mic — attached to a sender —
+  // was invisible. Watch the outgoing side instead: getUserMedia (the mic is often acquired before
+  // any peer connection exists), addTrack/addTransceiver (attachment) and sender.replaceTrack (the
+  // swap many apps perform on unmute).
+  //
+  // This mirrors `src/content/per-track/core/local-track-hook.ts`, which carries the unit tests.
+  // The duplication is deliberate: this script must be a single import-free file, because it has
+  // to install synchronously at document_start, before the page constructs its first
+  // RTCPeerConnection. A bare import turns it into an async loader and the hook arrives too late
+  // (and crxjs collides the two platforms' loaders on their shared basename). Keep both in sync.
+  const reportedLocalTracks = new WeakSet<object>();
+
+  const reportLocalTrack = (candidate: unknown): void => {
+    if (!candidate || typeof candidate !== 'object') return;
+    if ((candidate as MediaStreamTrack).kind !== 'audio') return;
+    if (reportedLocalTracks.has(candidate)) return;
+    reportedLocalTracks.add(candidate);
+
+    try {
+      addLocalTrack(candidate as MediaStreamTrack);
+    } catch {
+      // Never let our bookkeeping break the call.
+    }
+  };
+
+  const watchSender = (sender: any): any => {
+    if (!sender || typeof sender.replaceTrack !== 'function' || sender.__livescribeWatched) {
+      return sender;
+    }
+    sender.__livescribeWatched = true;
+
+    const originalReplace = sender.replaceTrack.bind(sender);
+    sender.replaceTrack = (track: unknown, ...rest: unknown[]) => {
+      reportLocalTrack(track);
+      return originalReplace(track, ...rest);
+    };
+    return sender;
+  };
+
+  const watchOutgoingAudio = (pc: any): void => {
+    if (!pc || pc.__livescribeOutgoingWatched) return;
+    pc.__livescribeOutgoingWatched = true;
+
+    if (typeof pc.addTrack === 'function') {
+      const originalAddTrack = pc.addTrack.bind(pc);
+      pc.addTrack = (track: unknown, ...streams: unknown[]) => {
+        reportLocalTrack(track);
+        return watchSender(originalAddTrack(track, ...streams));
+      };
+    }
+
+    if (typeof pc.addTransceiver === 'function') {
+      const originalAddTransceiver = pc.addTransceiver.bind(pc);
+      // First argument is either a track or a kind string ('audio'/'video').
+      pc.addTransceiver = (trackOrKind: unknown, ...rest: unknown[]) => {
+        reportLocalTrack(trackOrKind);
+        const transceiver = originalAddTransceiver(trackOrKind, ...rest);
+        watchSender(transceiver?.sender);
+        return transceiver;
+      };
+    }
+  };
+
+  const watchUserMediaAudio = (): void => {
+    const devices: any = navigator.mediaDevices;
+    if (!devices || typeof devices.getUserMedia !== 'function' || devices.__livescribeWatched) {
+      return;
+    }
+    devices.__livescribeWatched = true;
+
+    const original = devices.getUserMedia.bind(devices);
+    devices.getUserMedia = async (constraints?: any) => {
+      const stream = await original(constraints);
+      try {
+        stream.getAudioTracks().forEach(reportLocalTrack);
+      } catch {
+        // A stream we cannot inspect is still handed back untouched.
+      }
+      return stream;
+    };
+  };
+
   const registerPeerConnection = (pc: RTCPeerConnection): void => {
     peerConnections.add(pc);
+    watchOutgoingAudio(pc);
     console.log('[LiveScribe][Meet][WebRTCTracksMain] peer connection registered', {
       total: peerConnections.size,
     });
@@ -209,6 +331,8 @@
       registryElements,
     });
   }, 5000);
+
+  watchUserMediaAudio();
 
   console.log('[LiveScribe][Meet][WebRTCTracksMain] installed');
   emitSnapshot('installed');
