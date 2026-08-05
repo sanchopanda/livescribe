@@ -69,3 +69,6 @@ packages/stt-service/models/
 *.egg-info/
 dist/
 build/
+
+# Syncthing folder marker (not part of the project)
+.stfolder/

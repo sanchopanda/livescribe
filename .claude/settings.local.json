@@ -19,7 +19,8 @@
       "Bash(echo \"build exit=$?\")",
       "Bash(python3 *)",
       "Bash(echo \"build \\(shared+backend+extension\\) exit=$?\")",
-      "Bash(echo \"build:extension exit=$?\")"
+      "Bash(echo \"build:extension exit=$?\")",
+      "Artifact"
     ]
   }
 }
