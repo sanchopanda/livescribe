@@ -1,0 +1,2390 @@
+<title>Skribo — четыре варианта дизайна кабинета</title>
+
+<style>
+  /* ==========================================================================
+     Оболочка документа. Токены — в текущем бренде Skribo (бирюза #0D9488),
+     чтобы предложения внутри читались как предложения, а не как «уже решено».
+     ========================================================================== */
+  :root {
+    --bg: #f5f7f8;
+    --surface: #ffffff;
+    --surface-2: #eef2f3;
+    --ink: #14191d;
+    --ink-2: #3d4750;
+    --muted: #5f6c75;
+    --line: #dee5e7;
+    --line-strong: #c3ced2;
+    --accent: #0d7d72;
+    --accent-ink: #0b5f57;
+    --accent-soft: #e2f1ef;
+    --shadow: 0 1px 2px rgba(16, 32, 36, .06), 0 8px 24px -12px rgba(16, 32, 36, .18);
+
+    --serif: Georgia, "Liberation Serif", "DejaVu Serif", "Times New Roman", serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "DejaVu Sans", sans-serif;
+    --mono: "DejaVu Sans Mono", "Liberation Mono", Consolas, "SF Mono", ui-monospace, monospace;
+
+    --measure: 68ch;
+    --max: 1180px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1417;
+      --surface: #161d21;
+      --surface-2: #1d262a;
+      --ink: #e6ecee;
+      --ink-2: #bdc8cc;
+      --muted: #93a2a7;
+      --line: #263136;
+      --line-strong: #384549;
+      --accent: #38beb0;
+      --accent-ink: #6fd6ca;
+      --accent-soft: #16302e;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 8px 24px -12px rgba(0, 0, 0, .7);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #0f1417;
+    --surface: #161d21;
+    --surface-2: #1d262a;
+    --ink: #e6ecee;
+    --ink-2: #bdc8cc;
+    --muted: #93a2a7;
+    --line: #263136;
+    --line-strong: #384549;
+    --accent: #38beb0;
+    --accent-ink: #6fd6ca;
+    --accent-soft: #16302e;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 8px 24px -12px rgba(0, 0, 0, .7);
+  }
+
+  :root[data-theme="light"] {
+    --bg: #f5f7f8;
+    --surface: #ffffff;
+    --surface-2: #eef2f3;
+    --ink: #14191d;
+    --ink-2: #3d4750;
+    --muted: #5f6c75;
+    --line: #dee5e7;
+    --line-strong: #c3ced2;
+    --accent: #0d7d72;
+    --accent-ink: #0b5f57;
+    --accent-soft: #e2f1ef;
+    --shadow: 0 1px 2px rgba(16, 32, 36, .06), 0 8px 24px -12px rgba(16, 32, 36, .18);
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: var(--max);
+    margin: 0 auto;
+    padding: 0 24px 96px;
+  }
+
+  a { color: var(--accent-ink); }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
+
+  /* --- шапка документа --- */
+  .doc-head {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding: 72px 0 40px;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .doc-title {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: clamp(34px, 5vw, 52px);
+    line-height: 1.1;
+    letter-spacing: -.015em;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  .lede {
+    max-width: var(--measure);
+    font-size: 18px;
+    color: var(--ink-2);
+    margin: 0;
+  }
+
+  .doc-note {
+    max-width: var(--measure);
+    font-size: 14.5px;
+    color: var(--muted);
+    margin: 0;
+    padding-left: 14px;
+    border-left: 2px solid var(--line-strong);
+  }
+
+  /* --- таблица сравнения --- */
+  .section-label {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin: 56px 0 18px;
+  }
+
+  .section-label h2 {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: 24px;
+    margin: 0;
+    letter-spacing: -.01em;
+  }
+
+  .section-label span {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .table-scroll {
+    overflow-x: auto;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+  }
+
+  table.cmp {
+    width: 100%;
+    min-width: 860px;
+    border-collapse: collapse;
+    font-size: 14.5px;
+  }
+
+  table.cmp th,
+  table.cmp td {
+    text-align: left;
+    padding: 14px 18px;
+    vertical-align: top;
+    border-bottom: 1px solid var(--line);
+  }
+
+  table.cmp thead th {
+    font-family: var(--mono);
+    font-weight: 400;
+    font-size: 11.5px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: var(--surface-2);
+    white-space: nowrap;
+  }
+
+  table.cmp tbody tr:last-child td { border-bottom: 0; }
+
+  table.cmp td.name {
+    white-space: nowrap;
+    font-weight: 600;
+  }
+
+  table.cmp td.name em {
+    display: block;
+    font-family: var(--mono);
+    font-style: normal;
+    font-size: 11.5px;
+    font-weight: 400;
+    letter-spacing: .1em;
+    color: var(--muted);
+  }
+
+  .cost {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--mono);
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .cost b {
+    display: inline-block;
+    width: 46px;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--line-strong);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .cost b::after {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: var(--fill, 33%);
+    background: var(--accent);
+  }
+
+  /* --- переключатель вариантов --- */
+  .switcher {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    margin: 56px 0 0;
+    padding: 12px 0;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .tab {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 9px 14px;
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--ink-2);
+    font: inherit;
+    font-size: 14.5px;
+    cursor: pointer;
+    transition: background .15s ease, color .15s ease, border-color .15s ease;
+  }
+
+  .tab kbd {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .1em;
+    color: var(--muted);
+    background: none;
+    border: 0;
+  }
+
+  .tab:hover { border-color: var(--accent); }
+
+  .tab[aria-selected="true"] {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+
+  .tab[aria-selected="true"] kbd { color: rgba(255, 255, 255, .7); }
+
+  /* --- панель варианта --- */
+  .panel[hidden] { display: none; }
+
+  .panel {
+    padding-top: 36px;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+
+  .v-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    gap: 32px 48px;
+    align-items: start;
+  }
+
+  @media (max-width: 860px) {
+    .v-head { grid-template-columns: minmax(0, 1fr); }
+  }
+
+  .v-name {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: clamp(26px, 3.4vw, 36px);
+    line-height: 1.15;
+    letter-spacing: -.015em;
+    margin: 0 0 10px;
+  }
+
+  .v-name small {
+    display: block;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+
+  .v-thesis {
+    margin: 0;
+    font-size: 17px;
+    color: var(--ink-2);
+    max-width: 56ch;
+  }
+
+  .spec {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 18px 20px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+  }
+
+  .spec-row {
+    display: grid;
+    grid-template-columns: 92px minmax(0, 1fr);
+    gap: 14px;
+    align-items: start;
+    font-size: 14px;
+  }
+
+  .spec-row dt {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding-top: 3px;
+  }
+
+  .spec-row dd {
+    margin: 0;
+    color: var(--ink-2);
+  }
+
+  .swatches {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .sw {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: .02em;
+  }
+
+  .sw i {
+    display: block;
+    width: 54px;
+    height: 26px;
+    border-radius: 5px;
+    border: 1px solid var(--line-strong);
+  }
+
+  .caption {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 10px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .caption span {
+    flex: 1;
+    height: 1px;
+    background: var(--line);
+  }
+
+  .verdict {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .verdict div {
+    background: var(--surface);
+    padding: 16px 18px;
+    font-size: 14.5px;
+    color: var(--ink-2);
+  }
+
+  .verdict h4 {
+    margin: 0 0 6px;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* ==========================================================================
+     Каркас макета. Каждый вариант сознательно живёт в своей палитре и не
+     реагирует на тему читателя — это предложение по дизайну, а не сам документ.
+     Все внутренности читают только локальные --m-* токены.
+     ========================================================================== */
+  .mk {
+    border: 1px solid var(--line-strong);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    font-family: var(--m-sans);
+    color: var(--m-ink);
+  }
+
+  .m-chrome {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 14px;
+    background: var(--m-chrome-bg);
+    border-bottom: 1px solid var(--m-line);
+  }
+
+  .m-dots { display: flex; gap: 5px; }
+
+  .m-dots i {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--m-line-strong);
+  }
+
+  .m-url {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--m-muted);
+    background: var(--m-bg);
+    border: 1px solid var(--m-line);
+    border-radius: 999px;
+    padding: 3px 12px;
+  }
+
+  .m-scroll { overflow-x: auto; background: var(--m-bg); }
+
+  .m-screen {
+    min-width: 900px;
+    display: flex;
+    background: var(--m-bg);
+  }
+
+  /* мелкие общие детали макетов */
+  .m-num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  .m-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 2px 9px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+
+  .m-pill.ok { background: var(--m-ok-soft); color: var(--m-ok); }
+  .m-pill.warn { background: var(--m-warn-soft); color: var(--m-warn); }
+  .m-pill.off { background: var(--m-surface-2); color: var(--m-muted); }
+
+  .m-plat {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13px;
+    color: var(--m-muted);
+    white-space: nowrap;
+  }
+
+  .m-plat i {
+    display: grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    background: var(--m-surface-2);
+    border: 1px solid var(--m-line);
+    font-family: var(--mono);
+    font-size: 10px;
+    font-style: normal;
+    font-weight: 700;
+    color: var(--m-ink-2);
+  }
+
+  .m-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font: inherit;
+    font-size: 13.5px;
+    font-weight: 600;
+    padding: 8px 14px;
+    border-radius: var(--m-radius);
+    border: 1px solid var(--m-line-strong);
+    background: var(--m-surface);
+    color: var(--m-ink-2);
+    cursor: default;
+  }
+
+  .m-btn.primary {
+    background: var(--m-accent);
+    border-color: var(--m-accent);
+    color: var(--m-on-accent);
+  }
+
+  .m-avatar {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--m-accent-soft);
+    color: var(--m-accent);
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  /* ---------- A. Читальня ---------- */
+  .v-a {
+    --m-bg: #f4f6f8;
+    --m-surface: #ffffff;
+    --m-surface-2: #eaeef2;
+    --m-chrome-bg: #eaeef2;
+    --m-ink: #131a21;
+    --m-ink-2: #3b4855;
+    --m-muted: #64717e;
+    --m-line: #e0e6eb;
+    --m-line-strong: #c8d2da;
+    --m-accent: #2c5470;
+    --m-accent-soft: #e4ecf2;
+    --m-on-accent: #ffffff;
+    --m-ok: #1a6b4c; --m-ok-soft: #e2f0ea;
+    --m-warn: #9c4221; --m-warn-soft: #f7e9e2;
+    --m-radius: 7px;
+    --m-sans: var(--sans);
+    --m-read: var(--serif);
+  }
+
+  .a-side {
+    width: 216px;
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    padding: 24px 16px;
+    background: var(--m-surface);
+    border-right: 1px solid var(--m-line);
+  }
+
+  .a-brand {
+    font-family: var(--m-read);
+    font-size: 21px;
+    letter-spacing: -.01em;
+    color: var(--m-ink);
+    padding: 0 10px;
+    margin-bottom: 26px;
+  }
+
+  .a-nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+
+  .a-nav a {
+    padding: 8px 10px;
+    font-size: 14.5px;
+    color: var(--m-ink-2);
+    text-decoration: none;
+    border-left: 2px solid transparent;
+  }
+
+  .a-nav a.on {
+    color: var(--m-ink);
+    font-weight: 600;
+    border-left-color: var(--m-accent);
+    background: var(--m-accent-soft);
+  }
+
+  .a-me {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-top: 16px;
+    border-top: 1px solid var(--m-line);
+    font-size: 13px;
+    color: var(--m-muted);
+  }
+
+  .a-main { flex: 1; min-width: 0; padding: 34px 44px 44px; }
+
+  .a-h1 {
+    font-family: var(--m-read);
+    font-weight: 400;
+    font-size: 31px;
+    letter-spacing: -.02em;
+    margin: 0 0 22px;
+  }
+
+  .a-tools {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--m-line-strong);
+    margin-bottom: 26px;
+  }
+
+  .a-search {
+    flex: 1;
+    font-size: 15px;
+    color: var(--m-muted);
+  }
+
+  .a-sort { font-size: 13.5px; color: var(--m-accent); font-weight: 600; }
+
+  .a-group {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--m-muted);
+    margin: 26px 0 6px;
+  }
+
+  .a-group:first-of-type { margin-top: 0; }
+
+  .a-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 28px;
+    align-items: baseline;
+    padding: 15px 0;
+    border-bottom: 1px solid var(--m-line);
+  }
+
+  .a-row-t {
+    font-family: var(--m-read);
+    font-size: 17.5px;
+    color: var(--m-ink);
+  }
+
+  .a-row-s {
+    grid-column: 1;
+    font-size: 14px;
+    color: var(--m-muted);
+    max-width: 68ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .a-row-m {
+    grid-row: 1 / span 2;
+    grid-column: 2;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-size: 13px;
+    color: var(--m-muted);
+  }
+
+  .a-back { font-size: 13.5px; color: var(--m-accent); text-decoration: none; }
+
+  .a-meta {
+    display: flex;
+    gap: 14px;
+    font-size: 13.5px;
+    color: var(--m-muted);
+    margin-bottom: 30px;
+  }
+
+  .a-note {
+    max-width: 74ch;
+    padding: 18px 0 20px;
+    border-top: 1px solid var(--m-line-strong);
+    border-bottom: 1px solid var(--m-line-strong);
+    margin-bottom: 34px;
+  }
+
+  .a-note h3 {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 400;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--m-muted);
+    margin: 0 0 10px;
+  }
+
+  .a-note p {
+    font-family: var(--m-read);
+    font-size: 16.5px;
+    line-height: 1.65;
+    color: var(--m-ink-2);
+    margin: 0 0 14px;
+  }
+
+  .a-tasks { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 7px; }
+
+  .a-tasks li { font-size: 14.5px; color: var(--m-ink-2); }
+
+  .a-tasks b { color: var(--m-ink); }
+
+  .a-seg {
+    display: grid;
+    grid-template-columns: 62px minmax(0, 74ch);
+    gap: 0 22px;
+    padding: 0 0 22px;
+  }
+
+  .a-seg .tc { font-size: 12.5px; color: var(--m-muted); padding-top: 5px; }
+
+  .a-seg .sp {
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--m-accent);
+    margin-bottom: 3px;
+  }
+
+  .a-seg .tx {
+    font-family: var(--m-read);
+    font-size: 16.5px;
+    line-height: 1.7;
+    color: var(--m-ink);
+  }
+
+  /* ---------- B. Пульт ---------- */
+  .v-b {
+    --m-bg: #eef1f4;
+    --m-surface: #ffffff;
+    --m-surface-2: #e6ebef;
+    --m-chrome-bg: #e2e8ec;
+    --m-ink: #0c1116;
+    --m-ink-2: #38434e;
+    --m-muted: #5c6873;
+    --m-line: #d8dee4;
+    --m-line-strong: #bcc6ce;
+    --m-accent: #b04a08;
+    --m-accent-soft: #fbeade;
+    --m-on-accent: #ffffff;
+    --m-ok: #12693f; --m-ok-soft: #e0efe7;
+    --m-warn: #a92616; --m-warn-soft: #fae5e2;
+    --m-radius: 4px;
+    --m-sans: var(--sans);
+  }
+
+  .v-b .m-screen { flex-direction: column; }
+
+  .b-top {
+    display: flex;
+    align-items: center;
+    gap: 26px;
+    padding: 0 20px;
+    height: 52px;
+    background: var(--m-surface);
+    border-bottom: 1px solid var(--m-line-strong);
+  }
+
+  .b-brand {
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: .18em;
+    color: var(--m-ink);
+  }
+
+  .b-nav { display: flex; gap: 4px; height: 100%; align-items: stretch; }
+
+  .b-nav a {
+    display: flex;
+    align-items: center;
+    padding: 0 14px;
+    font-size: 13.5px;
+    color: var(--m-muted);
+    text-decoration: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+
+  .b-nav a.on {
+    color: var(--m-ink);
+    font-weight: 600;
+    border-bottom-color: var(--m-accent);
+  }
+
+  .b-search {
+    margin-left: auto;
+    width: 240px;
+    padding: 6px 12px;
+    border: 1px solid var(--m-line-strong);
+    border-radius: var(--m-radius);
+    background: var(--m-bg);
+    font-size: 13px;
+    color: var(--m-muted);
+  }
+
+  .b-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 20px;
+    background: var(--m-bg);
+    border-bottom: 1px solid var(--m-line);
+  }
+
+  .b-chip {
+    font-size: 12.5px;
+    padding: 4px 11px;
+    border: 1px solid var(--m-line-strong);
+    border-radius: var(--m-radius);
+    background: var(--m-surface);
+    color: var(--m-ink-2);
+  }
+
+  .b-chip.on {
+    background: var(--m-ink);
+    border-color: var(--m-ink);
+    color: #fff;
+    font-weight: 600;
+  }
+
+  .b-count { margin-left: auto; font-size: 12.5px; color: var(--m-muted); }
+
+  .b-tbl-wrap { padding: 0 20px 24px; background: var(--m-bg); }
+
+  table.b-tbl {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--m-surface);
+    border: 1px solid var(--m-line);
+    font-size: 13.5px;
+  }
+
+  table.b-tbl th {
+    text-align: left;
+    padding: 9px 14px;
+    font-family: var(--mono);
+    font-weight: 400;
+    font-size: 10.5px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--m-muted);
+    background: var(--m-surface-2);
+    border-bottom: 1px solid var(--m-line-strong);
+    white-space: nowrap;
+  }
+
+  table.b-tbl td {
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--m-line);
+    color: var(--m-ink-2);
+    white-space: nowrap;
+  }
+
+  table.b-tbl td.t { color: var(--m-ink); font-weight: 600; }
+
+  table.b-tbl tbody tr:nth-child(2) { background: var(--m-accent-soft); }
+
+  table.b-tbl .r { text-align: right; }
+
+  .b-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    padding: 20px;
+    background: var(--m-surface);
+    border-bottom: 1px solid var(--m-line);
+  }
+
+  .b-head h1 { font-size: 20px; margin: 0 0 6px; letter-spacing: -.01em; }
+
+  .b-head .meta { display: flex; gap: 12px; font-size: 13px; color: var(--m-muted); }
+
+  .b-actions { margin-left: auto; display: flex; gap: 8px; }
+
+  .b-stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1px;
+    background: var(--m-line);
+    border-bottom: 1px solid var(--m-line);
+  }
+
+  .b-stat { background: var(--m-surface); padding: 12px 20px; }
+
+  .b-stat dt {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--m-muted);
+  }
+
+  .b-stat dd {
+    margin: 3px 0 0;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -.02em;
+    color: var(--m-ink);
+  }
+
+  .b-stat dd small { font-size: 12px; font-weight: 500; color: var(--m-muted); }
+
+  .b-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+    gap: 1px;
+    background: var(--m-line);
+  }
+
+  .b-pane { background: var(--m-bg); padding: 18px 20px 24px; }
+
+  .b-pane > h2 {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 400;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--m-muted);
+    margin: 0 0 12px;
+  }
+
+  .b-seg {
+    display: grid;
+    grid-template-columns: 46px 118px minmax(0, 1fr);
+    gap: 12px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--m-line);
+    font-size: 13.5px;
+    line-height: 1.5;
+  }
+
+  .b-seg .tc { font-size: 12px; color: var(--m-muted); }
+  .b-seg .sp { font-weight: 600; color: var(--m-ink); }
+  .b-seg .tx { color: var(--m-ink-2); white-space: normal; }
+
+  .b-card {
+    background: var(--m-surface);
+    border: 1px solid var(--m-line);
+    border-radius: var(--m-radius);
+    padding: 14px 16px;
+  }
+
+  .b-card p { margin: 0; font-size: 13.5px; line-height: 1.6; color: var(--m-ink-2); }
+
+  .b-tasks { margin: 14px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 9px; }
+
+  .b-tasks li {
+    display: flex;
+    gap: 9px;
+    align-items: flex-start;
+    font-size: 13px;
+    color: var(--m-ink-2);
+    padding-top: 9px;
+    border-top: 1px solid var(--m-line);
+  }
+
+  .b-tasks li em {
+    font-style: normal;
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--m-accent);
+    background: var(--m-accent-soft);
+    border-radius: 3px;
+    padding: 1px 6px;
+    white-space: nowrap;
+  }
+
+  /* ---------- C. Split-view ---------- */
+  .v-c {
+    --m-bg: #f3f6f4;
+    --m-surface: #ffffff;
+    --m-surface-2: #e9efeb;
+    --m-chrome-bg: #e7ede9;
+    --m-ink: #101613;
+    --m-ink-2: #37453e;
+    --m-muted: #5d6b64;
+    --m-line: #dde5e0;
+    --m-line-strong: #c3cec8;
+    --m-accent: #12604a;
+    --m-accent-soft: #e2efe9;
+    --m-on-accent: #ffffff;
+    --m-rail: #13372c;
+    --m-ok: #12604a; --m-ok-soft: #e2efe9;
+    --m-warn: #9a3412; --m-warn-soft: #f6e8e1;
+    --m-radius: 6px;
+    --m-sans: var(--sans);
+  }
+
+  .c-rail {
+    width: 56px;
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 0;
+    background: var(--m-rail);
+  }
+
+  .c-rail .mark {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    background: #ffffff;
+    color: var(--m-rail);
+    font-weight: 800;
+    font-size: 15px;
+    margin-bottom: 10px;
+  }
+
+  .c-rail i {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    font-family: var(--mono);
+    font-style: normal;
+    font-size: 13px;
+    color: rgba(255, 255, 255, .62);
+  }
+
+  .c-rail i.on { background: rgba(255, 255, 255, .16); color: #fff; }
+
+  .c-rail .spacer { flex: 1; }
+
+  .c-list {
+    width: 306px;
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    background: var(--m-surface);
+    border-right: 1px solid var(--m-line-strong);
+  }
+
+  .c-list-top {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--m-line);
+  }
+
+  .c-list-top h2 { margin: 0; font-size: 15px; letter-spacing: -.01em; }
+
+  .c-list-top .fld {
+    padding: 7px 11px;
+    border: 1px solid var(--m-line-strong);
+    border-radius: var(--m-radius);
+    font-size: 12.5px;
+    color: var(--m-muted);
+  }
+
+  .c-item {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--m-line);
+    border-left: 3px solid transparent;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .c-item.on { background: var(--m-accent-soft); border-left-color: var(--m-accent); }
+
+  .c-item-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .c-item-t {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--m-ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .c-item-d { font-size: 11.5px; color: var(--m-muted); white-space: nowrap; }
+
+  .c-item-s {
+    font-size: 12.5px;
+    color: var(--m-muted);
+    line-height: 1.45;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .c-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--m-bg); }
+
+  .c-pane-head {
+    padding: 16px 24px 0;
+    background: var(--m-surface);
+    border-bottom: 1px solid var(--m-line-strong);
+  }
+
+  .c-pane-head h1 { margin: 0 0 6px; font-size: 18px; letter-spacing: -.01em; }
+
+  .c-pane-head .meta { display: flex; gap: 12px; font-size: 12.5px; color: var(--m-muted); }
+
+  .c-tabs { display: flex; gap: 18px; margin-top: 14px; }
+
+  .c-tabs span {
+    padding-bottom: 9px;
+    font-size: 13.5px;
+    color: var(--m-muted);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+
+  .c-tabs span.on { color: var(--m-accent); font-weight: 600; border-bottom-color: var(--m-accent); }
+
+  .c-pane-body { padding: 20px 24px 26px; }
+
+  .c-seg { display: grid; grid-template-columns: 54px minmax(0, 1fr); gap: 14px; padding: 0 0 16px; }
+
+  .c-seg .tc { font-size: 12px; color: var(--m-muted); padding-top: 2px; }
+  .c-seg .sp { font-size: 13px; font-weight: 700; color: var(--m-ink); margin-bottom: 2px; }
+  .c-seg .tx { font-size: 14.5px; line-height: 1.6; color: var(--m-ink-2); max-width: 70ch; }
+
+  .c-empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 64px 24px;
+    text-align: center;
+    color: var(--m-muted);
+  }
+
+  .c-empty strong { font-size: 15px; color: var(--m-ink-2); font-weight: 600; }
+  .c-empty span { font-size: 13.5px; max-width: 40ch; }
+
+  .c-empty .glyph {
+    width: 46px;
+    height: 46px;
+    border-radius: 12px;
+    border: 1px dashed var(--m-line-strong);
+    display: grid;
+    place-items: center;
+    font-family: var(--mono);
+    font-size: 17px;
+    color: var(--m-line-strong);
+  }
+
+  /* ---------- D. Тёмная студия ---------- */
+  .v-d {
+    --m-bg: #14181e;
+    --m-surface: #1b212a;
+    --m-surface-2: #232b35;
+    --m-chrome-bg: #10141a;
+    --m-ink: #e9e7e2;
+    --m-ink-2: #c2c8d0;
+    --m-muted: #8b95a2;
+    --m-line: #2a323d;
+    --m-line-strong: #3a4450;
+    --m-accent: #e9a05c;
+    --m-accent-soft: #3a2c1e;
+    --m-on-accent: #1a1206;
+    --m-ok: #6ecf9e; --m-ok-soft: #1c3229;
+    --m-warn: #f0876f; --m-warn-soft: #37231f;
+    --m-radius: 10px;
+    --m-sans: var(--sans);
+    --sp1: #7fb2e8;
+    --sp2: #e9a05c;
+    --sp3: #8fd6b4;
+    --sp4: #cfa2e8;
+  }
+
+  .v-d .m-url { background: #0a0d11; }
+
+  .d-side {
+    width: 208px;
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    padding: 20px 14px;
+    background: var(--m-chrome-bg);
+    border-right: 1px solid var(--m-line);
+  }
+
+  .d-brand {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 0 8px;
+    margin-bottom: 24px;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -.01em;
+  }
+
+  .d-brand i {
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 7px;
+    background: var(--m-accent);
+    color: var(--m-on-accent);
+    font-style: normal;
+    font-size: 13px;
+    font-weight: 800;
+  }
+
+  .d-nav { display: flex; flex-direction: column; gap: 3px; flex: 1; }
+
+  .d-nav a {
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 14px;
+    color: var(--m-muted);
+    text-decoration: none;
+  }
+
+  .d-nav a.on { background: var(--m-accent-soft); color: var(--m-accent); font-weight: 600; }
+
+  .d-me {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-top: 14px;
+    border-top: 1px solid var(--m-line);
+    font-size: 13px;
+    color: var(--m-muted);
+  }
+
+  .d-main { flex: 1; min-width: 0; padding: 26px 30px 34px; }
+
+  .d-head {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 22px;
+  }
+
+  .d-head h1 { margin: 0; font-size: 23px; letter-spacing: -.02em; }
+
+  .d-seg-ctl {
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    background: var(--m-surface);
+    border: 1px solid var(--m-line);
+    border-radius: 999px;
+    margin-left: auto;
+  }
+
+  .d-seg-ctl span {
+    padding: 5px 13px;
+    border-radius: 999px;
+    font-size: 12.5px;
+    color: var(--m-muted);
+  }
+
+  .d-seg-ctl span.on { background: var(--m-surface-2); color: var(--m-ink); font-weight: 600; }
+
+  .d-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+
+  .d-card {
+    background: var(--m-surface);
+    border: 1px solid var(--m-line);
+    border-radius: var(--m-radius);
+    padding: 16px 18px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .d-card-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+  .d-card h3 { margin: 0; font-size: 15.5px; letter-spacing: -.01em; }
+
+  .d-card .meta { display: flex; gap: 12px; font-size: 12.5px; color: var(--m-muted); }
+
+  .d-wave { display: flex; align-items: flex-end; gap: 2px; height: 26px; }
+
+  .d-wave i {
+    flex: 1;
+    min-width: 2px;
+    border-radius: 1px;
+    background: var(--m-line-strong);
+  }
+
+  .d-wave i.hot { background: var(--m-accent); }
+
+  .d-faces { display: flex; }
+
+  .d-faces b {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: #10131a;
+    border: 2px solid var(--m-surface);
+    margin-left: -7px;
+  }
+
+  .d-faces b:first-child { margin-left: 0; }
+
+  .d-player {
+    background: var(--m-surface);
+    border: 1px solid var(--m-line);
+    border-radius: var(--m-radius);
+    padding: 16px 18px;
+    margin-bottom: 20px;
+  }
+
+  .d-player .wave { display: flex; align-items: flex-end; gap: 2px; height: 54px; }
+
+  .d-ticks {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--m-muted);
+  }
+
+  .d-legend { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+
+  .d-legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12.5px;
+    color: var(--m-ink-2);
+    background: var(--m-surface);
+    border: 1px solid var(--m-line);
+    border-radius: 999px;
+    padding: 4px 11px;
+  }
+
+  .d-legend i { width: 8px; height: 8px; border-radius: 50%; }
+
+  .d-body { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 20px; }
+
+  .d-seg { display: grid; grid-template-columns: 54px minmax(0, 1fr); gap: 14px; padding: 0 0 16px; }
+
+  .d-seg .tc { font-size: 12px; color: var(--m-muted); padding-top: 2px; }
+  .d-seg .sp { font-size: 12.5px; font-weight: 700; margin-bottom: 3px; }
+  .d-seg .tx { font-size: 14.5px; line-height: 1.65; color: var(--m-ink-2); max-width: 66ch; }
+
+  .d-panel {
+    background: var(--m-surface);
+    border: 1px solid var(--m-line);
+    border-radius: var(--m-radius);
+    padding: 16px 18px;
+    align-self: start;
+  }
+
+  .d-panel h2 {
+    margin: 0 0 10px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 400;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--m-muted);
+  }
+
+  .d-panel p { margin: 0; font-size: 13.5px; line-height: 1.6; color: var(--m-ink-2); }
+
+  .d-panel ul { margin: 16px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
+
+  .d-panel li {
+    display: flex;
+    gap: 9px;
+    font-size: 13px;
+    color: var(--m-ink-2);
+    padding-top: 10px;
+    border-top: 1px solid var(--m-line);
+  }
+
+  .d-panel li em {
+    font-style: normal;
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--m-accent);
+    white-space: nowrap;
+  }
+
+  /* --- финал --- */
+  .closing {
+    margin-top: 72px;
+    padding-top: 32px;
+    border-top: 1px solid var(--line-strong);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 40px;
+  }
+
+  @media (max-width: 860px) {
+    .closing { grid-template-columns: minmax(0, 1fr); }
+  }
+
+  .closing h2 {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: 26px;
+    margin: 0 0 14px;
+    letter-spacing: -.01em;
+  }
+
+  .closing p { margin: 0 0 12px; color: var(--ink-2); max-width: var(--measure); }
+
+  .steps { margin: 0; padding-left: 22px; color: var(--ink-2); }
+  .steps li { margin-bottom: 8px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="doc-head">
+    <p class="eyebrow">Skribo · кабинет · app.skribo.ru</p>
+    <h1 class="doc-title">Четыре варианта дизайна кабинета</h1>
+    <p class="lede">
+      Сегодня кабинет выглядит так, как выглядит любой стартовый шаблон: сайдбар 240&nbsp;px,
+      восемь переменных в токенах, системный шрифт, тёмной темы нет. Ниже — четыре
+      осознанных направления. Каждое показано на двух экранах, которые держат весь продукт:
+      список переговоров и карточка встречи.
+    </p>
+    <p class="doc-note">
+      Это макеты, а не работающий кабинет: данные придуманы, кнопки не нажимаются.
+      Варианты сознательно остаются в своей палитре и не переключаются вместе с темой
+      документа — тёмный вариант должен быть тёмным, даже если вы читаете это днём.
+    </p>
+  </header>
+
+  <div class="section-label">
+    <h2>Коротко</h2>
+    <span>чем варианты отличаются</span>
+  </div>
+
+  <div class="table-scroll">
+    <table class="cmp">
+      <thead>
+        <tr>
+          <th scope="col">Вариант</th>
+          <th scope="col">Раскладка</th>
+          <th scope="col">Палитра</th>
+          <th scope="col">Сильная сторона</th>
+          <th scope="col">Слабое место</th>
+          <th scope="col">Переделка кода</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="name">Читальня<em>A</em></td>
+          <td>Сайдбар + одна колонка, список без карточек</td>
+          <td>Прохладная бумага, синий петроль <span class="m-num">#2C5470</span></td>
+          <td>Длинный транскрипт реально читается</td>
+          <td>Плохо масштабируется на сотни встреч</td>
+          <td><span class="cost" style="--fill: 35%"><b></b> низкая</span></td>
+        </tr>
+        <tr>
+          <td class="name">Пульт<em>B</em></td>
+          <td>Топбар + плотная таблица, шапка со статистикой</td>
+          <td>Холодный серый, жжёный янтарь <span class="m-num">#B04A08</span></td>
+          <td>Много записей видно сразу, всё сортируется</td>
+          <td>Сухо; транскрипт читать тяжелее</td>
+          <td><span class="cost" style="--fill: 70%"><b></b> средняя</span></td>
+        </tr>
+        <tr>
+          <td class="name">Split-view<em>C</em></td>
+          <td>Рейл 56&nbsp;px + список 306&nbsp;px + панель</td>
+          <td>Серо-зелёный, тёмный лес <span class="m-num">#12604A</span></td>
+          <td>Переключение между встречами без «назад»</td>
+          <td>Три панели тесно на ноутбуке 13″</td>
+          <td><span class="cost" style="--fill: 85%"><b></b> высокая</span></td>
+        </tr>
+        <tr>
+          <td class="name">Студия<em>D</em></td>
+          <td>Тёмный сайдбар + сетка карточек, плеер и волна</td>
+          <td>Графит, абрикос <span class="m-num">#E9A05C</span>, цвета спикеров</td>
+          <td>Видно, что продукт про звук; узнаётся</td>
+          <td>Нужны обе темы и цвета на спикера</td>
+          <td><span class="cost" style="--fill: 95%"><b></b> высокая</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="switcher">
+    <div class="tabs" role="tablist" aria-label="Варианты дизайна">
+      <button class="tab" role="tab" id="tab-a" aria-controls="panel-a" aria-selected="true"><kbd>A</kbd> Читальня</button>
+      <button class="tab" role="tab" id="tab-b" aria-controls="panel-b" aria-selected="false" tabindex="-1"><kbd>B</kbd> Пульт</button>
+      <button class="tab" role="tab" id="tab-c" aria-controls="panel-c" aria-selected="false" tabindex="-1"><kbd>C</kbd> Split-view</button>
+      <button class="tab" role="tab" id="tab-d" aria-controls="panel-d" aria-selected="false" tabindex="-1"><kbd>D</kbd> Студия</button>
+    </div>
+  </div>
+
+  <!-- =====================================================================
+       A. Читальня
+       ===================================================================== -->
+  <section class="panel" id="panel-a" role="tabpanel" aria-labelledby="tab-a">
+
+    <div class="v-head">
+      <div>
+        <h2 class="v-name"><small>Вариант A</small>Читальня</h2>
+        <p class="v-thesis">
+          Продукт — это текст. Значит, кабинет строится как читалка: одна колонка,
+          строка в 70 знаков, антиква в транскрипте, таймкод в отдельной колонке слева.
+          Список — не карточки, а журнал по дням: заголовок, одна строка саммари, время.
+          Саммари поднято в самое начало карточки, до транскрипта.
+        </p>
+      </div>
+      <dl class="spec">
+        <div class="spec-row">
+          <dt>Палитра</dt>
+          <dd>
+            <div class="swatches">
+              <span class="sw"><i style="background: #f4f6f8"></i>#F4F6F8</span>
+              <span class="sw"><i style="background: #ffffff"></i>#FFFFFF</span>
+              <span class="sw"><i style="background: #2c5470"></i>#2C5470</span>
+              <span class="sw"><i style="background: #64717e"></i>#64717E</span>
+              <span class="sw"><i style="background: #131a21"></i>#131A21</span>
+            </div>
+          </dd>
+        </div>
+        <div class="spec-row">
+          <dt>Шрифты</dt>
+          <dd>Georgia — заголовки и транскрипт; system-ui — интерфейс; моно — таймкоды</dd>
+        </div>
+        <div class="spec-row">
+          <dt>Плотность</dt>
+          <dd>Низкая: 6–8 встреч на экран, строки по 15&nbsp;px вертикали</dd>
+        </div>
+        <div class="spec-row">
+          <dt>Кому</dt>
+          <dd>Тем, кто перечитывает встречи целиком, а не ищет одну из двухсот</dd>
+        </div>
+      </dl>
+    </div>
+
+    <div>
+      <p class="caption">Список переговоров<span></span></p>
+      <div class="mk v-a">
+        <div class="m-chrome"><span class="m-dots"><i></i><i></i><i></i></span><span class="m-url">app.skribo.ru</span></div>
+        <div class="m-scroll">
+          <div class="m-screen">
+            <aside class="a-side">
+              <div class="a-brand">Skribo</div>
+              <nav class="a-nav">
+                <a href="#panel-a" class="on">Переговоры</a>
+                <a href="#panel-a">Настройки</a>
+              </nav>
+              <div class="a-me"><span class="m-avatar">А</span> Александр</div>
+            </aside>
+            <main class="a-main">
+              <h1 class="a-h1">Переговоры</h1>
+              <div class="a-tools">
+                <span class="a-search">Поиск по названию и тексту…</span>
+                <span class="a-sort">Сначала новые ▾</span>
+              </div>
+
+              <p class="a-group">Сегодня</p>
+              <div class="a-row">
+                <span class="a-row-t">Синк по редизайну кабинета</span>
+                <span class="a-row-s">Обсудили редизайн: нет тёмной темы, транскрипт нечитаем, саммари спрятано.</span>
+                <span class="a-row-m"><span class="m-plat"><i>M</i>Meet</span><span class="m-num">11:00</span><span class="m-num">47 мин</span></span>
+              </div>
+              <div class="a-row">
+                <span class="a-row-t">Демо Skribo для «Аквилон»</span>
+                <span class="a-row-s">Показали живой транскрипт на Meet; спросили про Zoom и выгрузку в Confluence.</span>
+                <span class="a-row-m"><span class="m-plat"><i>Z</i>Zoom</span><span class="m-num">09:30</span><span class="m-num">32 мин</span></span>
+              </div>
+
+              <p class="a-group">3 августа</p>
+              <div class="a-row">
+                <span class="a-row-t">Ретро спринта 14</span>
+                <span class="a-row-s">Разобрали срыв LS-21, договорились про размер задач и дежурство по релизу.</span>
+                <span class="a-row-m"><span class="m-plat"><i>P</i>Pachca</span><span class="m-num">18:15</span><span class="m-num">1 ч 05 мин</span></span>
+              </div>
+              <div class="a-row">
+                <span class="a-row-t">Созвон с Beget по VPS</span>
+                <span class="a-row-s">Подняли лимит памяти, договорились о переносе бэкапов на ночное окно.</span>
+                <span class="a-row-m"><span class="m-plat"><i>T</i>Teams</span><span class="m-num">14:40</span><span class="m-num">18 мин</span></span>
+              </div>
+
+              <p class="a-group">2 августа</p>
+              <div class="a-row">
+                <span class="a-row-t">Онбординг: Даша</span>
+                <span class="a-row-s">Анализ не удался — не был настроен ключ LLM. Транскрипт сохранён полностью.</span>
+                <span class="a-row-m"><span class="m-plat"><i>M</i>Meet</span><span class="m-num">12:00</span><span class="m-num">55 мин</span></span>
+              </div>
+            </main>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <p class="caption">Карточка встречи<span></span></p>
+      <div class="mk v-a">
+        <div class="m-chrome"><span class="m-dots"><i></i><i></i><i></i></span><span class="m-url">app.skribo.ru/meetings/8f21</span></div>
+        <div class="m-scroll">
+          <div class="m-screen">
+            <aside class="a-side">
+              <div class="a-brand">Skribo</div>
+              <nav class="a-nav">
+                <a href="#panel-a" class="on">Переговоры</a>
+                <a href="#panel-a">Настройки</a>
+              </nav>
+              <div class="a-me"><span class="m-avatar">А</span> Александр</div>
+            </aside>
+            <main class="a-main">
+              <a class="a-back" href="#panel-a">← Переговоры</a>
+              <h1 class="a-h1" style="margin-top: 14px; margin-bottom: 10px">Синк по редизайну кабинета</h1>
+              <div class="a-meta">
+                <span class="m-plat"><i>M</i>Google Meet</span>
+                <span class="m-num">4 авг 2026, 11:00</span>
+                <span class="m-num">47 мин</span>
+                <span class="m-num">4 участника</span>
+              </div>
+
+              <div class="a-note">
+                <h3>Саммари</h3>
+                <p>
+                  Главные болевые точки кабинета — отсутствие тёмной темы, нечитаемый транскрипт
+                  на длинных встречах и саммари, которое приходится искать. Решили: карточку
+                  оптимизировать под чтение, список — под быстрый скан, саммари поднять в шапку.
+                </p>
+                <ul class="a-tasks">
+                  <li><b>Игорь</b> — прототип карточки с таймкодами в левой колонке, до 8 августа</li>
+                  <li><b>Марина</b> — метрики по платформам за месяц</li>
+                  <li><b>Даша</b> — тексты пустых состояний</li>
+                </ul>
+              </div>
+
+              <div class="a-seg">
+                <span class="tc m-num">00:04</span>
+                <div>
+                  <div class="sp">Александр</div>
+                  <p class="tx" style="margin: 0">Давайте начнём с того, что у нас в кабинете до сих пор нет тёмной темы. Это первое, о чём спрашивают на каждом демо, и это же первое, что видно на скриншоте.</p>
+                </div>
+              </div>
+              <div class="a-seg">
+                <span class="tc m-num">00:19</span>
+                <div>
+                  <div class="sp">Марина</div>
+                  <p class="tx" style="margin: 0">По цифрам: из сорока сессий за неделю тридцать одна — Google Meet, остальное Pachca. Zoom пока не пробовал никто, кроме нас на демо.</p>
+                </div>
+              </div>
+              <div class="a-seg">
+                <span class="tc m-num">00:41</span>
+                <div>
+                  <div class="sp">Игорь</div>
+                  <p class="tx" style="margin: 0">Транскрипт в карточке нечитаемый на длинных встречах: строка на всю ширину экрана, спикер и текст в одну строку. Нужен таймкод слева и нормальная мера строки.</p>
+                </div>
+              </div>
+              <div class="a-seg">
+                <span class="tc m-num">01:26</span>
+                <div>
+                  <div class="sp">Даша</div>
+                  <p class="tx" style="margin: 0">И сделайте, пожалуйста, чтобы саммари было видно сразу, без клика. Сейчас его приходится искать в правой колонке.</p>
+                </div>
+              </div>
+            </main>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="verdict">
+      <div><h4>Что даёт</h4>Транскрипт становится читаемым: мера строки, антиква, таймкод отдельно. Саммари видно сразу.</div>
+      <div><h4>Чем платим</h4>Список плохо держит объём: на двухсот встречах журнал по дням превращается в бесконечный скролл без фильтров.</div>
+      <div><h4>Работа по коду</h4>Переписать <span class="m-num">MeetingsPage</span> и <span class="m-num">MeetingDetailPage</span>, расширить токены (шрифтовые роли, шкала отступов). Шелл почти не трогаем.</div>
+    </div>
+  </section>
+
+  <!-- =====================================================================
+       B. Пульт
+       ===================================================================== -->
+  <section class="panel" id="panel-b" role="tabpanel" aria-labelledby="tab-b" hidden>
+
+    <div class="v-head">
+      <div>
+        <h2 class="v-name"><small>Вариант B</small>Пульт</h2>
+        <p class="v-thesis">
+          Кабинет как рабочий инструмент: сайдбар уезжает в топбар и отдаёт всю ширину данным.
+          Список — таблица с сортировкой по колонкам, фильтрами по платформе и статусом анализа
+          в отдельной колонке. В карточке первым делом четыре измеримых числа, а потом уже текст.
+          Цифры — моноширинные и выровнены по разрядам.
+        </p>
+      </div>
+      <dl class="spec">
+        <div class="spec-row">
+          <dt>Палитра</dt>
+          <dd>
+            <div class="swatches">
+              <span class="sw"><i style="background: #eef1f4"></i>#EEF1F4</span>
+              <span class="sw"><i style="background: #ffffff"></i>#FFFFFF</span>
+              <span class="sw"><i style="background: #b04a08"></i>#B04A08</span>
+              <span class="sw"><i style="background: #5c6873"></i>#5C6873</span>
+              <span class="sw"><i style="background: #0c1116"></i>#0C1116</span>
+            </div>
+          </dd>
+        </div>
+        <div class="spec-row">
+          <dt>Шрифты</dt>
+          <dd>system-ui с плотным трекингом; моно — во всех числах и заголовках колонок</dd>
+        </div>
+        <div class="spec-row">
+          <dt>Плотность</dt>
+          <dd>Высокая: строка 36&nbsp;px, до 20 встреч на экран, радиус 4&nbsp;px</dd>
+        </div>
+        <div class="spec-row">
+          <dt>Кому</dt>
+          <dd>Тем, у кого встреч много и нужно быстро найти нужную</dd>
+        </div>
+      </dl>
+    </div>
+
+    <div>
+      <p class="caption">Список переговоров<span></span></p>
+      <div class="mk v-b">
+        <div class="m-chrome"><span class="m-dots"><i></i><i></i><i></i></span><span class="m-url">app.skribo.ru</span></div>
+        <div class="m-scroll">
+          <div class="m-screen">
+            <header class="b-top">
+              <span class="b-brand">SKRIBO</span>
+              <nav class="b-nav">
+                <a href="#panel-b" class="on">Переговоры</a>
+                <a href="#panel-b">Настройки</a>
+              </nav>
+              <span class="b-search">Поиск по названию и тексту…</span>
+              <span class="m-avatar">А</span>
+            </header>
+
+            <div class="b-bar">
+              <span class="b-chip on">Все</span>
+              <span class="b-chip">Meet</span>
+              <span class="b-chip">Zoom</span>
+              <span class="b-chip">Teams</span>
+              <span class="b-chip">Pachca</span>
+              <span class="b-count m-num">12 записей · 6 ч 41 мин всего</span>
+            </div>
+
+            <div class="b-tbl-wrap">
+              <table class="b-tbl">
+                <thead>
+                  <tr>
+                    <th scope="col">Название</th>
+                    <th scope="col">Платформа</th>
+                    <th scope="col">Начало ↓</th>
+                    <th scope="col" class="r">Длит.</th>
+                    <th scope="col" class="r">Уч.</th>
+                    <th scope="col" class="r">Реплик</th>
+                    <th scope="col">Анализ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="t">Синк по редизайну кабинета</td>
+                    <td><span class="m-plat"><i>M</i>Google Meet</span></td>
+                    <td class="m-num">4 авг, 11:00</td>
+                    <td class="r m-num">47:12</td>
+                    <td class="r m-num">4</td>
+                    <td class="r m-num">218</td>
+                    <td><span class="m-pill ok">Готов</span></td>
+                  </tr>
+                  <tr>
+                    <td class="t">Демо Skribo для «Аквилон»</td>
+                    <td><span class="m-plat"><i>Z</i>Zoom</span></td>
+                    <td class="m-num">4 авг, 09:30</td>
+                    <td class="r m-num">32:04</td>
+                    <td class="r m-num">6</td>
+                    <td class="r m-num">154</td>
+                    <td><span class="m-pill ok">Готов</span></td>
+                  </tr>
+                  <tr>
+                    <td class="t">Ретро спринта 14</td>
+                    <td><span class="m-plat"><i>P</i>Pachca</span></td>
+                    <td class="m-num">3 авг, 18:15</td>
+                    <td class="r m-num">65:38</td>
+                    <td class="r m-num">7</td>
+                    <td class="r m-num">402</td>
+                    <td><span class="m-pill off">Нет</span></td>
+                  </tr>
+                  <tr>
+                    <td class="t">Созвон с Beget по VPS</td>
+                    <td><span class="m-plat"><i>T</i>MS Teams</span></td>
+                    <td class="m-num">3 авг, 14:40</td>
+                    <td class="r m-num">18:20</td>
+                    <td class="r m-num">2</td>
+                    <td class="r m-num">76</td>
+                    <td><span class="m-pill ok">Готов</span></td>
+                  </tr>
+                  <tr>
+                    <td class="t">Онбординг: Даша</td>
+                    <td><span class="m-plat"><i>M</i>Google Meet</span></td>
+                    <td class="m-num">2 авг, 12:00</td>
+                    <td class="r m-num">55:01</td>
+                    <td class="r m-num">2</td>
+                    <td class="r m-num">311</td>
+                    <td><span class="m-pill warn">Ошибка</span></td>
+                  </tr>
+                  <tr>
+                    <td class="t">Планирование LS-23</td>
+                    <td><span class="m-plat"><i>M</i>Google Meet</span></td>
+                    <td class="m-num">1 авг, 10:00</td>
+                    <td class="r m-num">41:47</td>
+                    <td class="r m-num">5</td>
+                    <td class="r m-num">263</td>
+                    <td><span class="m-pill ok">Готов</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <p class="caption">Карточка встречи<span></span></p>
+      <div class="mk v-b">
+        <div class="m-chrome"><span class="m-dots"><i></i><i></i><i></i></span><span class="m-url">app.skribo.ru/meetings/8f21</span></div>
+        <div class="m-scroll">
+          <div class="m-screen">
+            <header class="b-top">
+              <span class="b-brand">SKRIBO</span>
+              <nav class="b-nav">
+                <a href="#panel-b" class="on">Переговоры</a>
+                <a href="#panel-b">Настройки</a>
+              </nav>
+              <span class="b-search">Поиск по названию и тексту…</span>
+              <span class="m-avatar">А</span>
+            </header>
+
+            <div class="b-head">
+              <div>
+                <h1>Синк по редизайну кабинета</h1>
+                <div class="meta">
+                  <span class="m-plat"><i>M</i>Google Meet</span>
+                  <span class="m-num">4 авг 2026, 11:00</span>
+                  <span class="m-num">47 мин</span>
+                </div>
+              </div>
+              <div class="b-actions">
+                <span class="m-btn">Выгрузить .md</span>
+                <span class="m-btn primary">Перегенерировать анализ</span>
+              </div>
+            </div>
+
+            <dl class="b-stats">
+              <div class="b-stat"><dt>Длительность</dt><dd class="m-num">47:12</dd></div>
+              <div class="b-stat"><dt>Слов</dt><dd class="m-num">6 214</dd></div>
+              <div class="b-stat"><dt>Спикеров</dt><dd class="m-num">4</dd></div>
+              <div class="b-stat"><dt>Реплик</dt><dd class="m-num">218 <small>· 12 задач</small></dd></div>
+            </dl>
+
+            <div class="b-body">
+              <section class="b-pane">
+                <h2>Транскрипт</h2>
+                <div class="b-seg"><span class="tc m-num">00:04</span><span class="sp">Александр</span><span class="tx">Давайте начнём с того, что у нас в кабинете до сих пор нет тёмной темы. Это первое, о чём спрашивают на демо.</span></div>
+                <div class="b-seg"><span class="tc m-num">00:19</span><span class="sp">Марина</span><span class="tx">По цифрам: из сорока сессий за неделю тридцать одна — Google Meet, остальное Pachca. Zoom пока не пробовал никто.</span></div>
+                <div class="b-seg"><span class="tc m-num">00:41</span><span class="sp">Игорь</span><span class="tx">Транскрипт нечитаем на длинных встречах: строка на всю ширину, спикер и текст в одну строку.</span></div>
+                <div class="b-seg"><span class="tc m-num">01:07</span><span class="sp">Александр</span><span class="tx">Тогда так: карточку переделываем под чтение, а список — под скан. Это два разных режима работы.</span></div>
+                <div class="b-seg"><span class="tc m-num">01:26</span><span class="sp">Даша</span><span class="tx">И сделайте, чтобы саммари было видно сразу, без клика. Сейчас его приходится искать.</span></div>
+                <div class="b-seg"><span class="tc m-num">02:02</span><span class="sp">Марина</span><span class="tx">Ещё просят выгрузку: половина клиентов хочет положить итог встречи в свою вики.</span></div>
+              </section>
+              <aside class="b-pane">
+                <h2>Анализ</h2>
+                <div class="b-card">
+                  <p>Болевые точки кабинета: нет тёмной темы, транскрипт нечитаем на длинных встречах, саммари спрятано. Решение — разделить режимы: список под скан, карточка под чтение.</p>
+                  <ul class="b-tasks">
+                    <li><em>Игорь</em> Прототип карточки с таймкодами слева, до 8 авг</li>
+                    <li><em>Марина</em> Метрики по платформам за месяц</li>
+                    <li><em>Александр</em> Саммари в шапку карточки</li>
+                    <li><em>Даша</em> Тексты пустых состояний</li>
+                  </ul>
+                </div>
+              </aside>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="verdict">
+      <div><h4>Что даёт</h4>Объём перестаёт быть проблемой: сортировка по колонкам, фильтры, статус анализа виден списком. Плюс освободившаяся ширина.</div>
+      <div><h4>Чем платим</h4>Читать длинный транскрипт в плотной сетке неприятно, а топбар оставляет меньше места для будущих разделов навигации.</div>
+      <div><h4>Работа по коду</h4>Новый шелл вместо <span class="m-num">CabinetLayout</span>, таблица (TanStack Table уже в плане), компоненты pill/chip/stat, серверная сортировка в <span class="m-num">GET /api/meetings</span>.</div>
+    </div>
+  </section>
+
+  <!-- =====================================================================
+       C. Split-view
+       ===================================================================== -->
+  <section class="panel" id="panel-c" role="tabpanel" aria-labelledby="tab-c" hidden>
+
+    <div class="v-head">
+      <div>
+        <h2 class="v-name"><small>Вариант C</small>Split-view</h2>
+        <p class="v-thesis">
+          Раскладка почтового клиента: узкий рейл с иконками, колонка списка и панель встречи
+          рядом. Список никуда не исчезает — можно перебирать встречи подряд, не нажимая
+          «назад». Анализ и задачи живут во вкладках панели, а не во второй колонке, поэтому
+          транскрипт получает всю ширину. Пустое состояние — часть дизайна, а не забытый экран.
+        </p>
+      </div>
+      <dl class="spec">
+        <div class="spec-row">
+          <dt>Палитра</dt>
+          <dd>
+            <div class="swatches">
+              <span class="sw"><i style="background: #f3f6f4"></i>#F3F6F4</span>
+              <span class="sw"><i style="background: #13372c"></i>#13372C</span>
+              <span class="sw"><i style="background: #12604a"></i>#12604A</span>
+              <span class="sw"><i style="background: #5d6b64"></i>#5D6B64</span>
+              <span class="sw"><i style="background: #101613"></i>#101613</span>
+            </div>
+          </dd>
+        </div>
+        <div class="spec-row">
+          <dt>Шрифты</dt>
+          <dd>system-ui во всём интерфейсе; моно — таймкоды и даты</dd>
+        </div>
+        <div class="spec-row">
+          <dt>Плотность</dt>
+          <dd>Средняя: в списке заголовок + две строки саммари, 10–12 встреч на экран</dd>
+        </div>
+        <div class="spec-row">
+          <dt>Кому</dt>
+          <dd>Тем, кто разбирает встречи пачкой — «просмотреть всё за неделю»</dd>
+        </div>
+      </dl>
+    </div>
+
+    <div>
+      <p class="caption">Список: ничего не выбрано<span></span></p>
+      <div class="mk v-c">
+        <div class="m-chrome"><span class="m-dots"><i></i><i></i><i></i></span><span class="m-url">app.skribo.ru</span></div>
+        <div class="m-scroll">
+          <div class="m-screen">
+            <nav class="c-rail">
+              <span class="mark">S</span>
+              <i class="on" title="Переговоры">☰</i>
+              <i title="Настройки">⚙</i>
+              <span class="spacer"></span>
+              <i title="Александр">А</i>
+            </nav>
+            <div class="c-list">
+              <div class="c-list-top">
+                <h2>Переговоры</h2>
+                <span class="fld">Поиск по названию и тексту…</span>
+              </div>
+              <div class="c-item">
+                <div class="c-item-top"><span class="c-item-t">Синк по редизайну кабинета</span><span class="c-item-d m-num">11:00</span></div>
+                <span class="c-item-s">Обсудили редизайн кабинета: нет тёмной темы, транскрипт нечитаем, саммари спрятано.</span>
+              </div>
+              <div class="c-item">
+                <div class="c-item-top"><span class="c-item-t">Демо Skribo для «Аквилон»</span><span class="c-item-d m-num">09:30</span></div>
+                <span class="c-item-s">Показали живой транскрипт на Meet; спросили про Zoom и выгрузку в Confluence.</span>
+              </div>
+              <div class="c-item">
+                <div class="c-item-top"><span class="c-item-t">Ретро спринта 14</span><span class="c-item-d m-num">3 авг</span></div>
+                <span class="c-item-s">Разобрали срыв LS-21, договорились про размер задач и дежурство по релизу.</span>
+              </div>
+              <div class="c-item">
+                <div class="c-item-top"><span class="c-item-t">Созвон с Beget по VPS</span><span class="c-item-d m-num">3 авг</span></div>
+                <span class="c-item-s">Подняли лимит памяти, перенесли бэкапы на ночное окно.</span>
+              </div>
+              <div class="c-item">
+                <div class="c-item-top"><span class="c-item-t">Онбординг: Даша</span><span class="c-item-d m-num">2 авг</span></div>
+                <span class="c-item-s">Анализ не удался — не настроен ключ LLM. Транскрипт сохранён полностью.</span>
+              </div>
+            </div>
+            <div class="c-pane">
+              <div class="c-empty">
+                <span class="glyph">‹›</span>
+                <strong>Выберите переговоры слева</strong>
+                <span>Транскрипт, саммари и задачи откроются здесь. Новые записи появляются автоматически, когда расширение заканчивает звонок.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <p class="caption">Встреча выбрана: список остаётся на месте<span></span></p>
+      <div class="mk v-c">
+        <div class="m-chrome"><span class="m-dots"><i></i><i></i><i></i></span><span class="m-url">app.skribo.ru/meetings/8f21</span></div>
+        <div class="m-scroll">
+          <div class="m-screen">
+            <nav class="c-rail">
+              <span class="mark">S</span>
+              <i class="on" title="Переговоры">☰</i>
+              <i title="Настройки">⚙</i>
+              <span class="spacer"></span>
+              <i title="Александр">А</i>
+            </nav>
+            <div class="c-list">
+              <div class="c-list-top">
+                <h2>Переговоры</h2>
+                <span class="fld">Поиск по названию и тексту…</span>
+              </div>
+              <div class="c-item on">
+                <div class="c-item-top"><span class="c-item-t">Синк по редизайну кабинета</span><span class="c-item-d m-num">11:00</span></div>
+                <span class="c-item-s">Обсудили редизайн кабинета: нет тёмной темы, транскрипт нечитаем, саммари спрятано.</span>
+              </div>
+              <div class="c-item">
+                <div class="c-item-top"><span class="c-item-t">Демо Skribo для «Аквилон»</span><span class="c-item-d m-num">09:30</span></div>
+                <span class="c-item-s">Показали живой транскрипт на Meet; спросили про Zoom и выгрузку в Confluence.</span>
+              </div>
+              <div class="c-item">
+                <div class="c-item-top"><span class="c-item-t">Ретро спринта 14</span><span class="c-item-d m-num">3 авг</span></div>
+                <span class="c-item-s">Разобрали срыв LS-21, договорились про размер задач и дежурство по релизу.</span>
+              </div>
+              <div class="c-item">
+                <div class="c-item-top"><span class="c-item-t">Созвон с Beget по VPS</span><span class="c-item-d m-num">3 авг</span></div>
+                <span class="c-item-s">Подняли лимит памяти, перенесли бэкапы на ночное окно.</span>
+              </div>
+            </div>
+            <div class="c-pane">
+              <div class="c-pane-head">
+                <h1>Синк по редизайну кабинета</h1>
+                <div class="meta">
+                  <span class="m-plat"><i>M</i>Google Meet</span>
+                  <span class="m-num">4 авг 2026, 11:00</span>
+                  <span class="m-num">47 мин</span>
+                  <span class="m-num">4 участника</span>
+                </div>
+                <div class="c-tabs">
+                  <span class="on">Транскрипт</span>
+                  <span>Саммари</span>
+                  <span>Задачи · 4</span>
+                </div>
+              </div>
+              <div class="c-pane-body">
+                <div class="c-seg"><span class="tc m-num">00:04</span><div><div class="sp">Александр</div><div class="tx">Давайте начнём с того, что у нас в кабинете до сих пор нет тёмной темы. Это первое, о чём спрашивают на каждом демо.</div></div></div>
+                <div class="c-seg"><span class="tc m-num">00:19</span><div><div class="sp">Марина</div><div class="tx">По цифрам: из сорока сессий за неделю тридцать одна — Google Meet, остальное Pachca. Zoom пока не пробовал никто, кроме нас на демо.</div></div></div>
+                <div class="c-seg"><span class="tc m-num">00:41</span><div><div class="sp">Игорь</div><div class="tx">Транскрипт в карточке нечитаемый на длинных встречах: строка на всю ширину экрана, спикер и текст в одну строку.</div></div></div>
+                <div class="c-seg"><span class="tc m-num">01:07</span><div><div class="sp">Александр</div><div class="tx">Тогда так: карточку переделываем под чтение, а список — под скан. Это два разных режима, и не надо их смешивать.</div></div></div>
+                <div class="c-seg"><span class="tc m-num">01:26</span><div><div class="sp">Даша</div><div class="tx">И сделайте, чтобы саммари было видно сразу, без клика.</div></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="verdict">
+      <div><h4>Что даёт</h4>Перебирать встречи подряд становится дешево — нет цикла «открыл → назад → открыл». Транскрипт получает всю ширину панели.</div>
+      <div><h4>Чем платим</h4>Три панели на 13″ тесно, нужен адаптив с двумя состояниями. Роутинг усложняется: URL должен помнить и выбор, и вкладку.</div>
+      <div><h4>Работа по коду</h4>Полностью новый шелл: рейл + список + <span class="m-num">Outlet</span>, вложенные роуты, состояние выбора в URL, отдельная мобильная раскладка.</div>
+    </div>
+  </section>
+
+  <!-- =====================================================================
+       D. Студия
+       ===================================================================== -->
+  <section class="panel" id="panel-d" role="tabpanel" aria-labelledby="tab-d" hidden>
+
+    <div class="v-head">
+      <div>
+        <h2 class="v-name"><small>Вариант D</small>Студия</h2>
+        <p class="v-thesis">
+          Единственный вариант, который признаёт, что Skribo работает со звуком. Тёмная тема
+          по умолчанию, как в аудиоредакторах, волна дорожки в карточке встречи и в превью
+          списка, таймкоды моноширинные, у каждого спикера свой цвет — тот же цвет в волне,
+          в легенде и в транскрипте. Абрикосовый акцент вместо ожидаемого кислотно-зелёного.
+        </p>
+      </div>
+      <dl class="spec">
+        <div class="spec-row">
+          <dt>Палитра</dt>
+          <dd>
+            <div class="swatches">
+              <span class="sw"><i style="background: #14181e"></i>#14181E</span>
+              <span class="sw"><i style="background: #1b212a"></i>#1B212A</span>
+              <span class="sw"><i style="background: #e9a05c"></i>#E9A05C</span>
+              <span class="sw"><i style="background: #8b95a2"></i>#8B95A2</span>
+              <span class="sw"><i style="background: #e9e7e2"></i>#E9E7E2</span>
+            </div>
+          </dd>
+        </div>
+        <div class="spec-row">
+          <dt>Спикеры</dt>
+          <dd>
+            <div class="swatches">
+              <span class="sw"><i style="background: #7fb2e8"></i>#7FB2E8</span>
+              <span class="sw"><i style="background: #e9a05c"></i>#E9A05C</span>
+              <span class="sw"><i style="background: #8fd6b4"></i>#8FD6B4</span>
+              <span class="sw"><i style="background: #cfa2e8"></i>#CFA2E8</span>
+            </div>
+          </dd>
+        </div>
+        <div class="spec-row">
+          <dt>Шрифты</dt>
+          <dd>system-ui для интерфейса; моно — таймкоды, длительности и шкала волны</dd>
+        </div>
+        <div class="spec-row">
+          <dt>Кому</dt>
+          <dd>Если кабинет должен запоминаться и стоять рядом с Otter и Tactiq</dd>
+        </div>
+      </dl>
+    </div>
+
+    <div>
+      <p class="caption">Список переговоров<span></span></p>
+      <div class="mk v-d">
+        <div class="m-chrome"><span class="m-dots"><i></i><i></i><i></i></span><span class="m-url">app.skribo.ru</span></div>
+        <div class="m-scroll">
+          <div class="m-screen">
+            <aside class="d-side">
+              <div class="d-brand"><i>S</i> Skribo</div>
+              <nav class="d-nav">
+                <a href="#panel-d" class="on">Переговоры</a>
+                <a href="#panel-d">Настройки</a>
+              </nav>
+              <div class="d-me"><span class="m-avatar">А</span> Александр</div>
+            </aside>
+            <main class="d-main">
+              <div class="d-head">
+                <h1>Переговоры</h1>
+                <div class="d-seg-ctl">
+                  <span class="on">Все</span>
+                  <span>С анализом</span>
+                  <span>Без анализа</span>
+                </div>
+              </div>
+              <div class="d-grid">
+                <article class="d-card">
+                  <div class="d-card-top">
+                    <span class="m-plat"><i>M</i>Google Meet</span>
+                    <span class="m-pill ok">Анализ готов</span>
+                  </div>
+                  <h3>Синк по редизайну кабинета</h3>
+                  <div class="meta"><span class="m-num">4 авг, 11:00</span><span class="m-num">47 мин</span><span class="m-num">218 реплик</span></div>
+                  <div class="d-wave" data-wave="1" data-seed="3" data-hot="0.62"></div>
+                  <div class="d-faces"><b style="background: #7fb2e8">А</b><b style="background: #e9a05c">М</b><b style="background: #8fd6b4">И</b><b style="background: #cfa2e8">Д</b></div>
+                </article>
+                <article class="d-card">
+                  <div class="d-card-top">
+                    <span class="m-plat"><i>Z</i>Zoom</span>
+                    <span class="m-pill ok">Анализ готов</span>
+                  </div>
+                  <h3>Демо Skribo для «Аквилон»</h3>
+                  <div class="meta"><span class="m-num">4 авг, 09:30</span><span class="m-num">32 мин</span><span class="m-num">154 реплики</span></div>
+                  <div class="d-wave" data-wave="1" data-seed="7" data-hot="0.34"></div>
+                  <div class="d-faces"><b style="background: #7fb2e8">А</b><b style="background: #8fd6b4">И</b><b style="background: #8b95a2">+4</b></div>
+                </article>
+                <article class="d-card">
+                  <div class="d-card-top">
+                    <span class="m-plat"><i>P</i>Pachca</span>
+                    <span class="m-pill off">Без анализа</span>
+                  </div>
+                  <h3>Ретро спринта 14</h3>
+                  <div class="meta"><span class="m-num">3 авг, 18:15</span><span class="m-num">1 ч 05 мин</span><span class="m-num">402 реплики</span></div>
+                  <div class="d-wave" data-wave="1" data-seed="11" data-hot="0"></div>
+                  <div class="d-faces"><b style="background: #e9a05c">М</b><b style="background: #cfa2e8">Д</b><b style="background: #7fb2e8">А</b><b style="background: #8b95a2">+4</b></div>
+                </article>
+                <article class="d-card">
+                  <div class="d-card-top">
+                    <span class="m-plat"><i>M</i>Google Meet</span>
+                    <span class="m-pill warn">Анализ не удался</span>
+                  </div>
+                  <h3>Онбординг: Даша</h3>
+                  <div class="meta"><span class="m-num">2 авг, 12:00</span><span class="m-num">55 мин</span><span class="m-num">311 реплик</span></div>
+                  <div class="d-wave" data-wave="1" data-seed="5" data-hot="0"></div>
+                  <div class="d-faces"><b style="background: #7fb2e8">А</b><b style="background: #cfa2e8">Д</b></div>
+                </article>
+              </div>
+            </main>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <p class="caption">Карточка встречи<span></span></p>
+      <div class="mk v-d">
+        <div class="m-chrome"><span class="m-dots"><i></i><i></i><i></i></span><span class="m-url">app.skribo.ru/meetings/8f21</span></div>
+        <div class="m-scroll">
+          <div class="m-screen">
+            <aside class="d-side">
+              <div class="d-brand"><i>S</i> Skribo</div>
+              <nav class="d-nav">
+                <a href="#panel-d" class="on">Переговоры</a>
+                <a href="#panel-d">Настройки</a>
+              </nav>
+              <div class="d-me"><span class="m-avatar">А</span> Александр</div>
+            </aside>
+            <main class="d-main">
+              <div class="d-head">
+                <div>
+                  <h1 style="font-size: 21px">Синк по редизайну кабинета</h1>
+                  <div class="meta" style="display: flex; gap: 12px; font-size: 12.5px; color: var(--m-muted); margin-top: 6px">
+                    <span class="m-plat"><i>M</i>Google Meet</span>
+                    <span class="m-num">4 авг 2026, 11:00</span>
+                    <span class="m-num">47 мин</span>
+                  </div>
+                </div>
+                <span class="m-btn" style="margin-left: auto">Выгрузить .md</span>
+                <span class="m-btn primary">Перегенерировать</span>
+              </div>
+
+              <div class="d-player">
+                <div class="wave" data-wave="1" data-seed="3" data-hot="0.41" data-bars="120"></div>
+                <div class="d-ticks">
+                  <span class="m-num">00:00</span>
+                  <span class="m-num">09:26</span>
+                  <span class="m-num">18:52</span>
+                  <span class="m-num">28:18</span>
+                  <span class="m-num">37:44</span>
+                  <span class="m-num">47:12</span>
+                </div>
+              </div>
+
+              <div class="d-legend">
+                <span><i style="background: #7fb2e8"></i>Александр <b class="m-num" style="color: var(--m-muted); font-weight: 400">41%</b></span>
+                <span><i style="background: #e9a05c"></i>Марина <b class="m-num" style="color: var(--m-muted); font-weight: 400">24%</b></span>
+                <span><i style="background: #8fd6b4"></i>Игорь <b class="m-num" style="color: var(--m-muted); font-weight: 400">22%</b></span>
+                <span><i style="background: #cfa2e8"></i>Даша <b class="m-num" style="color: var(--m-muted); font-weight: 400">13%</b></span>
+              </div>
+
+              <div class="d-body">
+                <section>
+                  <div class="d-seg"><span class="tc m-num">00:04</span><div><div class="sp" style="color: #7fb2e8">Александр</div><div class="tx">Давайте начнём с того, что у нас в кабинете до сих пор нет тёмной темы. Это первое, о чём спрашивают на каждом демо, и это же первое, что видно на скриншоте.</div></div></div>
+                  <div class="d-seg"><span class="tc m-num">00:19</span><div><div class="sp" style="color: #e9a05c">Марина</div><div class="tx">По цифрам: из сорока сессий за неделю тридцать одна — Google Meet, остальное Pachca. Zoom пока не пробовал никто, кроме нас на демо.</div></div></div>
+                  <div class="d-seg"><span class="tc m-num">00:41</span><div><div class="sp" style="color: #8fd6b4">Игорь</div><div class="tx">Транскрипт в карточке нечитаемый на длинных встречах: строка на всю ширину экрана, спикер и текст в одну строку.</div></div></div>
+                  <div class="d-seg"><span class="tc m-num">01:26</span><div><div class="sp" style="color: #cfa2e8">Даша</div><div class="tx">И сделайте, чтобы саммари было видно сразу, без клика. Сейчас его приходится искать в правой колонке.</div></div></div>
+                </section>
+                <aside class="d-panel">
+                  <h2>Саммари</h2>
+                  <p>Болевые точки кабинета: нет тёмной темы, транскрипт нечитаем на длинных встречах, саммари спрятано. Решили разделить режимы — список под скан, карточка под чтение.</p>
+                  <ul>
+                    <li><em>Игорь</em> Прототип карточки с таймкодами слева, до 8 авг</li>
+                    <li><em>Марина</em> Метрики по платформам за месяц</li>
+                    <li><em>Александр</em> Саммари в шапку карточки</li>
+                    <li><em>Даша</em> Тексты пустых состояний</li>
+                  </ul>
+                </aside>
+              </div>
+            </main>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="verdict">
+      <div><h4>Что даёт</h4>Кабинет перестаёт быть безликим SaaS-шеллом: видно, что продукт про звук и про то, кто именно говорил.</div>
+      <div><h4>Чем платим</h4>Самый дорогой вариант. Волну нужно откуда-то взять (пики амплитуды при записи), цвета спикеров — стабильно закрепить, и придётся вести обе темы.</div>
+      <div><h4>Работа по коду</h4>Полный набор токенов со светлой и тёмной темой, компонент волны, назначение цвета спикеру на бэкенде, поле с пиками амплитуды в модели встречи.</div>
+    </div>
+  </section>
+
+  <div class="closing">
+    <div>
+      <h2>Что я бы взял</h2>
+      <p>
+        <strong>A как основу, B как список.</strong> Два экрана решают разные задачи: список
+        сканируют, карточку читают. Читальня выигрывает в карточке, Пульт — в списке, и они
+        не конфликтуют: один шелл, разная плотность на разных страницах.
+      </p>
+      <p>
+        Split-view красив, но платить за него вложенными роутами и отдельным мобильным
+        режимом рано — встреч пока десятки, а не сотни. Студия — сильнейший вариант
+        по узнаваемости, но требует данных, которых у нас ещё нет (пики амплитуды,
+        закреплённые цвета спикеров).
+      </p>
+    </div>
+    <div>
+      <h2>Дальше</h2>
+      <ol class="steps">
+        <li>Вы называете вариант (или гибрид — например «карточка из A, список из B»).</li>
+        <li>Я собираю набор токенов: палитра, шрифтовые роли, шкалы отступов и радиусов — вместо текущих восьми переменных.</li>
+        <li>Тёмная тема закладывается сразу на уровне токенов, даже если включим её позже.</li>
+        <li>Переделываем экраны по одному: список → карточка → настройки → страницы входа.</li>
+      </ol>
+      <p style="font-size: 14px; color: var(--muted); margin-top: 16px">
+        В макетах — только системные шрифты (Georgia, system-ui, моно), поэтому они выглядят
+        одинаково и без интернета. При внедрении можно подключить настоящую гарнитуру с
+        кириллицей — это отдельное решение.
+      </p>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // --- переключение вариантов ---
+  const tabs = Array.from(document.querySelectorAll('.tab'));
+  const panels = tabs.map((t) => document.getElementById(t.getAttribute('aria-controls')));
+
+  function select(index) {
+    tabs.forEach((tab, i) => {
+      const on = i === index;
+      tab.setAttribute('aria-selected', String(on));
+      tab.tabIndex = on ? 0 : -1;
+      panels[i].hidden = !on;
+    });
+  }
+
+  tabs.forEach((tab, i) => {
+    tab.addEventListener('click', () => select(i));
+    tab.addEventListener('keydown', (e) => {
+      const delta = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+      if (!delta) return;
+      e.preventDefault();
+      const next = (i + delta + tabs.length) % tabs.length;
+      select(next);
+      tabs[next].focus();
+    });
+  });
+
+  // --- волна дорожки: детерминированная, без случайных чисел ---
+  document.querySelectorAll('[data-wave]').forEach((el) => {
+    const seed = Number(el.dataset.seed || 1);
+    const bars = Number(el.dataset.bars || 56);
+    const hot = Number(el.dataset.hot || 0);
+    let markup = '';
+    for (let i = 0; i < bars; i++) {
+      const t = i / bars;
+      const amp =
+        0.46 +
+        0.3 * Math.sin(t * Math.PI * (6 + seed)) +
+        0.16 * Math.sin(t * Math.PI * (17 + seed * 2)) +
+        0.1 * Math.sin(t * Math.PI * (41 + seed));
+      const h = Math.max(8, Math.min(100, amp * 100));
+      const cls = t < hot ? ' class="hot"' : '';
+      markup += '<i' + cls + ' style="height:' + h.toFixed(1) + '%"></i>';
+    }
+    el.innerHTML = markup;
+  });
+</script>

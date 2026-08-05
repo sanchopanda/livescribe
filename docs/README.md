@@ -24,6 +24,7 @@
 - [`research/`](research/) — аналитика/ресёрч.
   - [`2026-07-26-stt-models-parakeet-gigaam.md`](research/2026-07-26-stt-models-parakeet-gigaam.md)
 - [`specs/`](specs/) — спеки фич (`NN-<feature>.md`).
+- [`design/`](design/) — визуальные макеты для выбора направления (открываются в браузере).
 - [`superpowers/specs/`](superpowers/specs/), [`superpowers/plans/`](superpowers/plans/) —
   дизайн-спеки и планы реализации (навыки brainstorming / writing-plans).
 
