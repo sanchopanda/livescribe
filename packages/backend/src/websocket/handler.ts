@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { ClientMessage, ServerMessage } from '@skribo/shared';
+import { AUTH_INVALID_TOKEN } from '@skribo/shared';
 import { SessionManager } from './session.js';
 import { createSTTProvider } from '../stt/index.js';
 import type { STTProviderType } from '../stt/index.js';
@@ -35,6 +36,60 @@ export function resolveSpeakerForSegment(session: SessionLike, result: any): str
   }
 
   return session.speaker ?? undefined;
+}
+
+export interface TranscriptSegmentRecord {
+  meetingId: string;
+  speaker: string | null;
+  text: string;
+  tsMs: number;
+  confidence: number | null;
+}
+
+/**
+ * The row a transcript result should become, or `null` when it must not be stored.
+ *
+ * Only finals are kept (partials are rewritten as the utterance unfolds), and only for a session
+ * tied to a Meeting — an anonymous session has nothing to attach a segment to. Pure on purpose:
+ * both capture modes decide this the same way, and the decision is what tests can pin down.
+ *
+ * Exported for tests.
+ */
+export function buildTranscriptSegmentRecord(
+  session: SessionLike,
+  result: { isFinal?: boolean; text?: string; confidence?: number } | null | undefined,
+  speaker: string | undefined,
+  nowMs: number,
+): TranscriptSegmentRecord | null {
+  if (!result?.isFinal) return null;
+  if (!session?.meetingId) return null;
+
+  const text = typeof result.text === 'string' ? result.text.trim() : '';
+  if (!text) return null;
+
+  return {
+    meetingId: session.meetingId,
+    speaker: speaker ?? null,
+    text,
+    tsMs: session.startedAtMs ? nowMs - session.startedAtMs : 0,
+    confidence: typeof result.confidence === 'number' ? result.confidence : null,
+  };
+}
+
+/**
+ * Whether a client-supplied `resumeMeetingId` may continue into this meeting.
+ *
+ * The id comes off the wire, so ownership decides — a token must never be able to append
+ * transcript to somebody else's meeting.
+ *
+ * Exported for tests.
+ */
+export function canResumeMeeting(
+  meeting: { id: string; userId: string } | null | undefined,
+  tokenUserId: string,
+): boolean {
+  if (!meeting) return false;
+  return meeting.userId === tokenUserId;
 }
 
 // Get STT provider type - read from env at runtime, not at module load
@@ -92,6 +147,24 @@ export function registerWebSocketHandler(server: FastifyInstance) {
           'Transcript sent to client',
         );
       }
+    };
+
+    /**
+     * Store a final transcript segment. Every capture mode goes through here: mixed feeds the
+     * session-level STT stream, per-track feeds one stream per participant, and both must land
+     * in the Meeting the cabinet reads.
+     */
+    const persistFinalSegment = (result: any, speaker?: string) => {
+      const session = sessionId ? sessionManager.getSession(sessionId) : undefined;
+      const record = buildTranscriptSegmentRecord(session, result, speaker, Date.now());
+      if (!record) return;
+
+      prisma.transcriptSegment.create({ data: record }).catch((err: Error) =>
+        server.log.warn(
+          { conn, sessionId, error: err.message },
+          'Failed to persist transcript segment',
+        ),
+      );
     };
 
     const normalizeSpeakerLabel = (value: string | null | undefined): string | undefined => {
@@ -191,7 +264,8 @@ export function registerWebSocketHandler(server: FastifyInstance) {
             // persist this session's transcript. No token (or an invalid/unknown
             // token) falls back to the pre-existing anonymous, non-persisted flow.
             const rawToken = message.token;
-            const startedAtMs = Date.now();
+            const resumeMeetingId = (message as any).resumeMeetingId as string | undefined;
+            let startedAtMs = Date.now();
             let meetingId: string | undefined;
             let meetingUserId: string | undefined;
             if (rawToken) {
@@ -201,21 +275,65 @@ export function registerWebSocketHandler(server: FastifyInstance) {
                 });
                 if (tok) {
                   meetingUserId = tok.userId;
-                  const meeting = await prisma.meeting.create({
-                    data: {
-                      userId: tok.userId,
-                      platform: (message as any).platform ?? null,
-                      audioMode: audioMode ?? null,
-                    },
-                  });
-                  meetingId = meeting.id;
+
+                  // A reconnect continues the meeting it was cut off from. Without this, a
+                  // socket that drops every minute shreds one call into a row of stubs.
+                  const resumable = resumeMeetingId
+                    ? await prisma.meeting.findUnique({ where: { id: resumeMeetingId } })
+                    : null;
+
+                  if (canResumeMeeting(resumable, tok.userId)) {
+                    meetingId = resumable!.id;
+                    // Keep the original start as the clock: segment offsets and the meeting's
+                    // duration must stay continuous across the gap.
+                    startedAtMs = resumable!.startedAt.getTime();
+                    await prisma.meeting
+                      .update({ where: { id: meetingId }, data: { endedAt: null } })
+                      .catch(() => {});
+                    server.log.info(
+                      { conn, meetingId, userId: meetingUserId },
+                      'Resumed meeting after reconnect',
+                    );
+                  } else {
+                    if (resumeMeetingId) {
+                      server.log.warn(
+                        { conn, resumeMeetingId, userId: meetingUserId },
+                        'Refused to resume meeting; opening a new one',
+                      );
+                    }
+                    const meeting = await prisma.meeting.create({
+                      data: {
+                        userId: tok.userId,
+                        platform: (message as any).platform ?? null,
+                        audioMode: audioMode ?? null,
+                      },
+                    });
+                    meetingId = meeting.id;
+                    server.log.info(
+                      { conn, meetingId, userId: meetingUserId },
+                      'Meeting created for authenticated session',
+                    );
+                  }
                   prisma.personalToken
                     .update({ where: { id: tok.id }, data: { lastUsedAt: new Date() } })
                     .catch(() => {});
-                  server.log.info(
-                    { conn, meetingId, userId: meetingUserId },
-                    'Meeting created for authenticated session',
+                } else {
+                  // A token arrived but matches nothing — most often this device's token was
+                  // revoked by a sign-in elsewhere. Keep transcribing (cutting a live call dead
+                  // would be worse) but say so: silently degrading to an unsaved session is how
+                  // a user talks for an hour and finds the cabinet empty.
+                  server.log.warn(
+                    { conn, platform: (message as any).platform ?? null, audioMode },
+                    'Session token not recognised; continuing without persistence',
                   );
+                  const authError: ServerMessage = {
+                    type: 'error',
+                    code: AUTH_INVALID_TOKEN,
+                    message:
+                      'Токен этого устройства больше не действителен — войдите в Skribo заново. ' +
+                      'Расшифровка продолжится, но не сохранится в кабинет.',
+                  };
+                  connection.send(JSON.stringify(authError));
                 }
               } catch (err) {
                 // DB hiccup or lookup failure: behave exactly like the anonymous
@@ -225,6 +343,11 @@ export function registerWebSocketHandler(server: FastifyInstance) {
                   'Failed to resolve token for session; continuing without persistence',
                 );
               }
+            } else {
+              server.log.warn(
+                { conn, platform: (message as any).platform ?? null, audioMode },
+                'Session start carried no token; transcript will not reach the cabinet',
+              );
             }
 
             // Create STT provider (optional - audio will still be saved even if STT fails)
@@ -242,24 +365,7 @@ export function registerWebSocketHandler(server: FastifyInstance) {
                 sendTranscript(result, resolvedSpeaker);
                 // server.log.debug(`Transcription (${result.isFinal ? 'final' : 'partial'}): ${result.text}`);
 
-                if (result.isFinal && session?.meetingId && result.text?.trim()) {
-                  prisma.transcriptSegment
-                    .create({
-                      data: {
-                        meetingId: session.meetingId,
-                        speaker: resolvedSpeaker ?? null,
-                        text: result.text.trim(),
-                        tsMs: session.startedAtMs ? Date.now() - session.startedAtMs : 0,
-                        confidence: typeof result.confidence === 'number' ? result.confidence : null,
-                      },
-                    })
-                    .catch((err: Error) =>
-                      server.log.warn(
-                        { conn, sessionId, error: err.message },
-                        'Failed to persist transcript segment',
-                      ),
-                    );
-                }
+                persistFinalSegment(result, resolvedSpeaker);
               };
               
               await sttProvider.initialize(language, onResult);
@@ -296,6 +402,7 @@ export function registerWebSocketHandler(server: FastifyInstance) {
               type: 'status',
               status: 'connected',
               sessionId,
+              meetingId,
             };
             connection.send(JSON.stringify(response));
             break;
@@ -327,6 +434,7 @@ export function registerWebSocketHandler(server: FastifyInstance) {
                 const ready = participantProvider.initialize(activeLanguage, (result: any) => {
                   const resolvedSpeaker = participantEntry?.speaker ?? formatParticipantFallback(participantId);
                   sendTranscript(result, resolvedSpeaker || undefined);
+                  persistFinalSegment(result, resolvedSpeaker || undefined);
                 });
 
                 participantEntry = {

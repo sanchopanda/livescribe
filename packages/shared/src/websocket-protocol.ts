@@ -24,6 +24,12 @@ export interface StartSessionMessage {
   platform?: 'meet' | 'zoom' | 'teams' | 'pachca';
   audioMode?: 'per-track' | 'mixed';
   token?: string;
+  /**
+   * Continue the transcript of a meeting already in progress instead of opening a new one.
+   * Set when a dropped WebSocket is being re-established: one call must stay one entry in
+   * the cabinet, however many times the socket reconnects.
+   */
+  resumeMeetingId?: string;
 }
 
 export interface StopSessionMessage {
@@ -43,6 +49,8 @@ export interface StatusMessage {
   type: 'status';
   status: 'connected' | 'recording' | 'processing' | 'idle';
   sessionId?: string;
+  /** Meeting this session persists into, so a reconnect can ask to resume it. */
+  meetingId?: string;
 }
 
 export interface ErrorMessage {
@@ -50,6 +58,13 @@ export interface ErrorMessage {
   code: string;
   message: string;
 }
+
+/**
+ * The token this device presented is not valid any more (revoked, or issued to an account that
+ * no longer has it). Transcription keeps running, but nothing is being saved — the client must
+ * say so and re-authenticate rather than record into nowhere.
+ */
+export const AUTH_INVALID_TOKEN = 'AUTH_INVALID_TOKEN';
 
 export interface PartialTranscriptMessage {
   type: 'partial';

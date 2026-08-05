@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import type { MeetingDetailDTO, AnalysisDTO } from '@skribo/shared';
 import { getMeeting, analyzeMeeting } from '../api';
 import { formatDate, formatDuration, platformLabel } from '../lib/format';
+import { buildTranscriptRows, formatPause } from '../lib/transcript-timeline';
 import styles from './MeetingDetailPage.module.scss';
 
 type Status = 'loading' | 'ready' | 'notfound' | 'error';
@@ -64,12 +65,18 @@ export function MeetingDetailPage() {
             <p className="muted">Пусто.</p>
           ) : (
             <ul className={styles.segments}>
-              {meeting.segments.map((s) => (
-                <li key={s.id} className={styles.segment}>
-                  <span className={styles.speaker}>{s.speaker || 'Спикер'}</span>
-                  <span className={styles.text}>{s.text}</span>
-                </li>
-              ))}
+              {buildTranscriptRows(meeting.segments).map((row) =>
+                row.kind === 'pause' ? (
+                  <li key={row.id} className={styles.pause}>
+                    Пауза {formatPause(row.durationMs)}
+                  </li>
+                ) : (
+                  <li key={row.segment.id} className={styles.segment}>
+                    <span className={styles.speaker}>{row.segment.speaker || 'Спикер'}</span>
+                    <span className={styles.text}>{row.segment.text}</span>
+                  </li>
+                ),
+              )}
             </ul>
           )}
         </section>

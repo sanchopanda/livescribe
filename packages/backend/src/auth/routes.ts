@@ -16,9 +16,15 @@ function setSession(reply: FastifyReply, userId: string) {
   });
 }
 
-// helper: ensure the user has exactly one 'extension'-labeled token, return a fresh raw token
-async function getOrRotateExtensionToken(userId: string): Promise<string> {
-  await prisma.personalToken.deleteMany({ where: { userId, label: 'extension' } });
+/**
+ * Issue an extension token for this account.
+ *
+ * One token per *device*, not per account: this used to delete the account's existing extension
+ * tokens first, so signing in on a second machine silently killed the first one. That device kept
+ * sending its revoked token forever — transcription still ran in the widget while nothing reached
+ * the cabinet, with nothing to see anywhere. Extra tokens are revocable in cabinet settings.
+ */
+async function issueExtensionToken(userId: string): Promise<string> {
   const { raw, hash } = generateToken();
   await prisma.personalToken.create({ data: { userId, tokenHash: hash, label: 'extension' } });
   return raw;
@@ -73,7 +79,7 @@ export function registerAuthRoutes(server: FastifyInstance) {
 
   server.post('/api/auth/extension-token', async (req, reply) => {
     const u = await requireUser(req, reply); if (!u) return;
-    const token = await getOrRotateExtensionToken(u.id);
+    const token = await issueExtensionToken(u.id);
     return { token };
   });
 
@@ -85,7 +91,7 @@ export function registerAuthRoutes(server: FastifyInstance) {
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user || !(await verifyPassword(body.password, user.passwordHash)))
       return reply.code(401).send({ error: 'invalid_credentials' });
-    const token = await getOrRotateExtensionToken(user.id);
+    const token = await issueExtensionToken(user.id);
     return { user: { id: user.id, email: user.email, name: user.name }, token };
   });
 

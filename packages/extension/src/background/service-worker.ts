@@ -1,11 +1,17 @@
 // Background service worker for LiveScribe extension
 // Coordinates between popup and offscreen document
 
+import { AUTH_INVALID_TOKEN } from '@skribo/shared';
 import { getPlatformCapabilities, resolveAudioMode } from '../platform/audio-mode-capabilities';
 import {
   TOGGLE_WIDGET_IN_ACTIVE_TAB,
   type WidgetToggleResult,
 } from '../messaging/widget-messages';
+import {
+  buildCallKey,
+  resolveResumeMeetingId,
+  type RememberedMeeting,
+} from './meeting-continuity';
 
 declare const __API_URL__: string;
 
@@ -18,6 +24,13 @@ type WsState = 'connected' | 'disconnected' | 'error';
 let recordingState: RecordingState = 'idle';
 let wsState: WsState = 'disconnected';
 let sessionId: string | null = null;
+/**
+ * Meeting the current recording writes into. Survives a WebSocket drop so the reconnect can
+ * resume that meeting rather than start a second one for the same call.
+ */
+let activeMeetingId: string | null = null;
+/** Identity of the call being recorded (see `buildCallKey`) — the key a pause resumes against. */
+let activeCallKey: string | null = null;
 let offscreenCreated = false;
 let recordingTabId: number | null = null;
 let recordingSegmentStartedAtMs: number | null = null;
@@ -76,6 +89,10 @@ function setRecordingIdle(options?: {
   }
   if (options?.clearSession !== false) {
     sessionId = null;
+    // Forget the live meeting but keep the remembered one: pressing start again inside the same
+    // call should continue it, and the pause is measured from this moment.
+    activeMeetingId = null;
+    touchRememberedMeeting().catch(() => {});
   }
   if (options?.resetLevels !== false) {
     resetAudioLevels();
@@ -270,6 +287,55 @@ async function sendToOffscreen(message: object): Promise<any> {
   }
 }
 
+const REMEMBERED_MEETING_KEY = 'skriboRememberedMeeting';
+
+/**
+ * Remember which meeting the recording in this tab belongs to. Stored in session storage
+ * because the MV3 service worker is torn down between events and would otherwise forget the
+ * meeting mid-call, splitting it in the cabinet.
+ */
+async function rememberMeeting(meetingId: string): Promise<void> {
+  if (!activeCallKey) return;
+  const entry: RememberedMeeting = { meetingId, callKey: activeCallKey, lastActiveAtMs: Date.now() };
+  try {
+    await chrome.storage.session.set({ [REMEMBERED_MEETING_KEY]: entry });
+  } catch (err) {
+    console.warn('Failed to remember meeting', err);
+  }
+}
+
+/** Push the pause clock forward — the continuity window counts from the last live moment. */
+async function touchRememberedMeeting(): Promise<void> {
+  try {
+    const stored = await chrome.storage.session.get(REMEMBERED_MEETING_KEY);
+    const entry = stored?.[REMEMBERED_MEETING_KEY] as RememberedMeeting | undefined;
+    if (!entry) return;
+    await chrome.storage.session.set({
+      [REMEMBERED_MEETING_KEY]: { ...entry, lastActiveAtMs: Date.now() },
+    });
+  } catch (err) {
+    console.warn('Failed to touch remembered meeting', err);
+  }
+}
+
+/**
+ * Meeting a session starting now should continue: the live one after a dropped socket, or the
+ * one this tab was recording before the user paused.
+ */
+async function resumeMeetingIdForStart(): Promise<string | undefined> {
+  if (activeMeetingId) return activeMeetingId;
+
+  try {
+    const stored = await chrome.storage.session.get(REMEMBERED_MEETING_KEY);
+    const entry = stored?.[REMEMBERED_MEETING_KEY] as RememberedMeeting | undefined;
+    const resumeId = resolveResumeMeetingId(entry, activeCallKey, Date.now());
+    return resumeId ?? undefined;
+  } catch (err) {
+    console.warn('Failed to read remembered meeting', err);
+    return undefined;
+  }
+}
+
 async function getSkriboToken(): Promise<string | undefined> {
   const { skriboToken } = await chrome.storage.local.get('skriboToken');
   const t = typeof skriboToken === 'string' ? skriboToken.trim() : '';
@@ -302,6 +368,7 @@ async function recoverPerTrackSession(reason: string): Promise<void> {
       platform: activeRecordingStartMessage.platform,
       audioMode: 'per-track',
       token: await getSkriboToken(),
+      resumeMeetingId: await resumeMeetingIdForStart(),
     });
 
     if (startResponse?.error) {
@@ -396,6 +463,7 @@ function startRecordingOffscreen(message: any, sendResponse: (response: any) => 
             platform: message.platform,
             audioMode,
             token: await getSkriboToken(),
+            resumeMeetingId: await resumeMeetingIdForStart(),
           })
             .then((sessionResponse) => {
               if (sessionResponse && sessionResponse.error) {
@@ -446,6 +514,7 @@ function startRecordingOffscreen(message: any, sendResponse: (response: any) => 
                 platform: message.platform,
                 audioMode,
                 token: await getSkriboToken(),
+                resumeMeetingId: await resumeMeetingIdForStart(),
               })
                 .then(() => {
                   setTimeout(() => {
@@ -562,6 +631,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sessionId = wsMessage.sessionId;
       }
 
+      // Remember which meeting this recording persists into, so a reconnect can continue it
+      // instead of opening a second entry in the cabinet for the same call.
+      if (wsMessage.meetingId) {
+        activeMeetingId = wsMessage.meetingId;
+        rememberMeeting(wsMessage.meetingId).catch(() => {});
+      }
+
       if (wsMessage.status === 'connected') {
         setWsStateConnected('WS_MESSAGE:status=connected');
       } else if (wsMessage.status === 'recording') {
@@ -578,6 +654,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           });
         }
       }
+    }
+
+    // A revoked token can only be cleared here: leaving it in storage means the popup keeps
+    // thinking it is signed in, and every future call transcribes into nowhere. Dropping it makes
+    // the next popup open re-authenticate (silently, if the cabinet session is still alive).
+    if (wsMessage.type === 'error' && wsMessage.code === AUTH_INVALID_TOKEN) {
+      console.warn('Extension token rejected by server; clearing it so the popup re-authenticates');
+      chrome.storage.local.remove(['skriboToken', 'skriboAccountEmail']).catch(() => {});
     }
 
     // Forward websocket messages to the tab where recording was started.
@@ -702,6 +786,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       platform: message.platform,
       audioMode: currentAudioMode,
     };
+    // Identify the call from its url, then let the remembered meeting decide: pressing start
+    // again inside the same call continues it, a different call opens a new one.
+    activeCallKey = buildCallKey(sender.tab?.url, sender.tab?.id);
+    activeMeetingId = null;
     perTrackRecoveryInProgress = false;
     broadcastWsRecoveryStatus();
     resetAudioLevels();

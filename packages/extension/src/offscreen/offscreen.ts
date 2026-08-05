@@ -415,6 +415,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         platform: message.platform,
         audioMode: message.audioMode,
         token: message.token,
+        resumeMeetingId: message.resumeMeetingId,
       } as any);
       sendResponse({ success: true });
       return true;
