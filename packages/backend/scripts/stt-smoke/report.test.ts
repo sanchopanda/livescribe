@@ -39,6 +39,29 @@ describe('medianFinalLagMs', () => {
   it('возвращает null, если провайдер не сообщает позиции', () => {
     expect(medianFinalLagMs([ev({ isFinal: true, msFromStart: 1000 })])).toBeNull();
   });
+
+  it('округляет результат при нецелых durationSec (реальные данные Deepgram)', () => {
+    // Реальные данные из Deepgram приходят с нецелыми значениями: 2.1899996, 3.5900002
+    // Результат должен быть целым числом (не 13311.999899999999)
+    const events = [
+      ev({ isFinal: true, msFromStart: 5000, audioPosSec: 1, durationSec: 2.1899996 }),
+    ];
+    const result = medianFinalLagMs(events);
+    expect(result).not.toBeNull();
+    expect(Number.isInteger(result!)).toBe(true);
+    expect(result).toBeCloseTo(1810, 1); // 5000 - (1 + 2.1899996)*1000 ≈ 1810
+  });
+
+  it('берёт медиану для чётного числа значений', () => {
+    // Четыре лага: 500, 1000, 1500, 2000 → медиана (1000 + 1500) / 2 = 1250
+    const events = [
+      ev({ isFinal: true, msFromStart: 1500, audioPosSec: 0, durationSec: 1 }), // 1500 - 1000 = 500
+      ev({ isFinal: true, msFromStart: 2000, audioPosSec: 0, durationSec: 1 }), // 2000 - 1000 = 1000
+      ev({ isFinal: true, msFromStart: 2500, audioPosSec: 0, durationSec: 1 }), // 2500 - 1000 = 1500
+      ev({ isFinal: true, msFromStart: 3000, audioPosSec: 0, durationSec: 1 }), // 3000 - 1000 = 2000
+    ];
+    expect(medianFinalLagMs(events)).toBe(1250);
+  });
 });
 
 describe('flatTranscript', () => {

@@ -32,7 +32,10 @@ export function medianFinalLagMs(events: SmokeEvent[]): number | null {
   if (lags.length === 0) return null;
   const sorted = [...lags].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 1 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+  if (sorted.length % 2 === 1) {
+    return Math.round(sorted[mid]);
+  }
+  return Math.round((sorted[mid - 1] + sorted[mid]) / 2);
 }
 
 export function flatTranscript(events: SmokeEvent[]): string {
