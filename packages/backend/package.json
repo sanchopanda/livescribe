@@ -11,6 +11,7 @@
     "lint": "eslint src --ext ts",
     "type-check": "tsc --noEmit",
     "type-check:scripts": "tsc -p tsconfig.scripts.json",
+    "stt:smoke": "tsx scripts/stt-smoke/run.ts",
     "clean": "rm -rf dist",
     "postinstall": "prisma generate",
     "test": "vitest run",

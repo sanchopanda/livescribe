@@ -54,6 +54,7 @@ packages/extension/src/**/*.d.ts.map
 
 # Recordings
 packages/backend/recordings/
+packages/backend/scripts/stt-smoke/out/
 
 # Python
 __pycache__/
