@@ -1,5 +1,11 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { currentAccount, loginWithPassword, signOut, tryAutoDetect } from './auth-api';
+import {
+  currentAccount,
+  loginWithPassword,
+  reconnectCabinetAccount,
+  signOut,
+  tryAutoDetect,
+} from './auth-api';
 import { readWidgetState, toggleWidget } from './widget-api';
 import { AUTO_SHOW_WIDGET_DEFAULT, getAutoShowWidget, setAutoShowWidget } from '../settings/widget-settings';
 import type { WidgetToggleError } from '../messaging/widget-messages';
@@ -138,6 +144,22 @@ export default function App() {
     setStatus('guest');
   }
 
+  async function handleReconnect() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const account = await reconnectCabinetAccount();
+      if (account) {
+        setEmail(account.email);
+        setStatus('authed');
+      } else {
+        setError('Не нашли активную сессию кабинета — войдите по email и паролю.');
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   if (status === 'loading') {
     return (
       <div className="skribo-popup">
@@ -227,6 +249,11 @@ export default function App() {
           {submitting ? 'Входим…' : 'Войти'}
         </button>
       </form>
+      {/* After a deliberate sign-out the cabinet session may still be alive; offer the one-click
+          way back instead of forcing a password nobody remembers. */}
+      <button type="button" className="skribo-link-button" onClick={handleReconnect} disabled={submitting}>
+        Войти через кабинет
+      </button>
       <a className="skribo-link" href={__CABINET_URL__} target="_blank" rel="noreferrer">
         Регистрация в кабинете
       </a>

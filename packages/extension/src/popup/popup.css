@@ -169,3 +169,24 @@ body {
 .skribo-link:hover {
   text-decoration: underline;
 }
+
+/* Reads as a link, behaves as a button — it performs an action, not navigation. */
+.skribo-link-button {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: #0d9488;
+  cursor: pointer;
+}
+
+.skribo-link-button:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.skribo-link-button:disabled {
+  color: #9ca3af;
+  cursor: default;
+}

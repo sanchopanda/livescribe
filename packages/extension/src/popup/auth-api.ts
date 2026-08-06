@@ -1,3 +1,5 @@
+import { clearSignedOut, hasSignedOut, markSignedOut } from './auth-optout';
+
 declare const __API_URL__: string;
 declare const __CABINET_URL__: string;
 
@@ -28,6 +30,10 @@ async function fetchWithTimeout(url: string, init: RequestInit, ms = 2500): Prom
 }
 
 export async function tryAutoDetect(): Promise<Account | null> {
+  // A deliberate sign-out must survive reopening the popup: "no token" alone cannot tell
+  // "never signed in" from "signed out on purpose".
+  if (await hasSignedOut(chrome.storage.local)) return null;
+
   try {
     const me = await fetchWithTimeout(`${__CABINET_URL__}/api/auth/me`, { credentials: 'include' });
     if (!me.ok) return null;
@@ -58,6 +64,8 @@ export async function loginWithPassword(email: string, password: string): Promis
   }
   const { user, token } = await jsonOrNull(res);
   await chrome.storage.local.set({ skriboToken: token, skriboAccountEmail: user?.email ?? null });
+  // Signing in with a password is as deliberate as it gets — the earlier sign-out no longer holds.
+  await clearSignedOut(chrome.storage.local);
   return { email: user?.email ?? email, via: 'login' };
 }
 
@@ -68,4 +76,16 @@ export async function currentAccount(): Promise<string | null> {
 
 export async function signOut(): Promise<void> {
   await chrome.storage.local.remove(['skriboToken', 'skriboAccountEmail']);
+  // Without this the next popup open auto-detects the still-valid cabinet session and signs the
+  // user straight back in, which makes the button look broken.
+  await markSignedOut(chrome.storage.local);
+}
+
+/**
+ * Sign back in through the cabinet session, without a password. This is the deliberate act that
+ * cancels a previous sign-out.
+ */
+export async function reconnectCabinetAccount(): Promise<Account | null> {
+  await clearSignedOut(chrome.storage.local);
+  return tryAutoDetect();
 }
