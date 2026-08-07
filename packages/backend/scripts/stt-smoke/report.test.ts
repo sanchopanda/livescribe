@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { timeToFirstEventMs, finalCount, medianFinalLagMs, flatTranscript, costUsd, buildReport } from './report.js';
+import {
+  timeToFirstEventMs,
+  finalCount,
+  medianFinalLagMs,
+  tailLatencyMs,
+  medianFinalIntervalMs,
+  flatTranscript,
+  costUsd,
+  buildReport,
+} from './report.js';
 import type { SmokeEvent } from './types.js';
 
 const ev = (e: Partial<SmokeEvent>): SmokeEvent => ({ msFromStart: 0, isFinal: false, text: 'x', ...e });
@@ -61,6 +70,66 @@ describe('medianFinalLagMs', () => {
       ev({ isFinal: true, msFromStart: 3000, audioPosSec: 0, durationSec: 1 }), // 3000 - 1000 = 2000
     ];
     expect(medianFinalLagMs(events)).toBe(1250);
+  });
+});
+
+describe('tailLatencyMs', () => {
+  it('положительное значение — последний финал пришёл позже конца аудио', () => {
+    const events = [ev({ isFinal: true, msFromStart: 12000 })];
+    expect(tailLatencyMs(events, 10000)).toBe(2000);
+  });
+
+  it('отрицательное значение — провайдер закончил раньше конца записи (тишина в хвосте)', () => {
+    // Реальный случай: nemotron/whisper на записи с тишиной в конце финишируют до конца аудио.
+    const events = [ev({ isFinal: true, msFromStart: 7000 })];
+    expect(tailLatencyMs(events, 10000)).toBe(-3000);
+  });
+
+  it('берёт самый поздний финал, а не первый по порядку в массиве', () => {
+    const events = [
+      ev({ isFinal: true, msFromStart: 5000 }),
+      ev({ isFinal: true, msFromStart: 9000 }),
+    ];
+    expect(tailLatencyMs(events, 10000)).toBe(-1000);
+  });
+
+  it('на прогоне без финалов возвращает null', () => {
+    expect(tailLatencyMs([ev({ isFinal: false, msFromStart: 5000 })], 10000)).toBeNull();
+  });
+});
+
+describe('medianFinalIntervalMs', () => {
+  it('меряет интервал между двумя финалами', () => {
+    const events = [
+      ev({ isFinal: true, msFromStart: 1000 }),
+      ev({ isFinal: true, msFromStart: 4900 }),
+    ];
+    expect(medianFinalIntervalMs(events)).toBe(3900);
+  });
+
+  it('берёт медиану интервалов, не зависит от порядка событий в массиве', () => {
+    // После сортировки по времени: 1000, 2000, 4000, 9000 → интервалы 1000, 2000, 5000 → медиана 2000.
+    const events = [
+      ev({ isFinal: true, msFromStart: 9000 }),
+      ev({ isFinal: true, msFromStart: 1000 }),
+      ev({ isFinal: true, msFromStart: 4000 }),
+      ev({ isFinal: true, msFromStart: 2000 }),
+    ];
+    expect(medianFinalIntervalMs(events)).toBe(2000);
+  });
+
+  it('игнорирует партиалы', () => {
+    const events = [
+      ev({ isFinal: true, msFromStart: 1000 }),
+      ev({ isFinal: false, msFromStart: 2000 }),
+      ev({ isFinal: true, msFromStart: 5000 }),
+    ];
+    expect(medianFinalIntervalMs(events)).toBe(4000);
+  });
+
+  it('на одном финале или без финалов интервал не определён', () => {
+    expect(medianFinalIntervalMs([ev({ isFinal: true, msFromStart: 1000 })])).toBeNull();
+    expect(medianFinalIntervalMs([])).toBeNull();
   });
 });
 

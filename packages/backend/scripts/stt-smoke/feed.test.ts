@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseWav, chunkPcm, bytesPerChunk, feedRealtime } from './feed.js';
+import { parseWav, chunkPcm, bytesPerChunk, wavDurationMs, feedRealtime } from './feed.js';
 
 /** Собирает минимальный валидный WAV: RIFF + fmt + (опционально LIST) + data. */
 function buildWav(pcm: Buffer, opts: { sampleRate?: number; channels?: number; extraChunk?: boolean } = {}): Buffer {
@@ -59,6 +59,18 @@ describe('parseWav', () => {
 describe('bytesPerChunk', () => {
   it('100 мс моно 16 кГц s16le = 3200 байт', () => {
     expect(bytesPerChunk({ sampleRate: 16000, channels: 1, bitsPerSample: 16 }, 100)).toBe(3200);
+  });
+});
+
+describe('wavDurationMs', () => {
+  it('считает длительность по размеру data, а не по приближению из событий', () => {
+    // 1 секунда моно 16 кГц s16le = 32000 байт.
+    expect(wavDurationMs({ data: Buffer.alloc(32000), sampleRate: 16000, channels: 1, bitsPerSample: 16 })).toBeCloseTo(1000, 3);
+  });
+
+  it('учитывает число каналов', () => {
+    // Те же 32000 байт, но стерео — вдвое короче по времени.
+    expect(wavDurationMs({ data: Buffer.alloc(32000), sampleRate: 16000, channels: 2, bitsPerSample: 16 })).toBeCloseTo(500, 3);
   });
 });
 

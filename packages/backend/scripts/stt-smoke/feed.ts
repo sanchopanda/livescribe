@@ -60,6 +60,12 @@ export function bytesPerChunk(wav: Pick<WavPcm, 'sampleRate' | 'channels' | 'bit
   return Math.round((wav.sampleRate * chunkMs) / 1000) * bytesPerSample;
 }
 
+/** Фактическая длительность аудио в мс — по размеру data-чанка, а не по приближению из событий. */
+export function wavDurationMs(wav: Pick<WavPcm, 'data' | 'sampleRate' | 'channels' | 'bitsPerSample'>): number {
+  const bytesPerSample = (wav.bitsPerSample / 8) * wav.channels;
+  return (wav.data.length / bytesPerSample / wav.sampleRate) * 1000;
+}
+
 /** Режет PCM на куски по size байт; последний может быть короче. */
 export function chunkPcm(data: Buffer, size: number): Buffer[] {
   if (size <= 0) throw new Error('Chunk size must be positive');

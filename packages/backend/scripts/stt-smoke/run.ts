@@ -36,8 +36,8 @@ function parseArgs(argv: string[]): Args {
 
   const file = get('file');
   const provider = (get('provider') ?? 'deepgram') as ProviderName;
-  if (!file) throw new Error('Usage: --file <wav> --provider deepgram|nemotron|salute [--language ru] [--seconds N] [--out dir] [--raw]');
-  if (!['deepgram', 'nemotron', 'salute'].includes(provider)) throw new Error(`Unknown provider: ${provider}`);
+  if (!file) throw new Error('Usage: --file <wav> --provider deepgram|nemotron|whisper|salute [--language ru] [--seconds N] [--out dir] [--raw]');
+  if (!['deepgram', 'nemotron', 'whisper', 'salute'].includes(provider)) throw new Error(`Unknown provider: ${provider}`);
 
   const seconds = get('seconds');
   return {
@@ -52,8 +52,18 @@ function parseArgs(argv: string[]): Args {
 
 async function createRunner(args: Args): Promise<SmokeRunner> {
   if (args.provider === 'deepgram') return createDeepgramRunner(args.language);
-  // Адаптеры Nemotron и SaluteSpeech появятся в Задаче 3 — до этого CLI умеет только Deepgram.
-  throw new Error(`Provider "${args.provider}" is not implemented yet (see Задача 3)`);
+  if (args.provider === 'nemotron') {
+    const { createNemotronRunner } = await import('./providers/nemotron.js');
+    return createNemotronRunner(args.language, { raw: args.raw, outDir: args.outDir });
+  }
+  if (args.provider === 'whisper') {
+    // Whisper large-v3 отдаётся через тот же Together Realtime эндпоинт, что и Nemotron —
+    // общая фабрика createTogetherRunner живёт в providers/nemotron.ts (см. комментарий там).
+    const { createWhisperRunner } = await import('./providers/nemotron.js');
+    return createWhisperRunner(args.language, { raw: args.raw, outDir: args.outDir });
+  }
+  // SaluteSpeech снят из объёма смока (облачного доступа к GigaAM для физлица нет) — файла providers/salute.ts нет.
+  throw new Error(`Provider "${args.provider}" is not implemented (see Задача 3 в брифе)`);
 }
 
 async function main(): Promise<void> {

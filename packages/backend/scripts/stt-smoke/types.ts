@@ -13,7 +13,7 @@ export interface SmokeEvent {
   durationSec?: number;
 }
 
-export type ProviderName = 'deepgram' | 'nemotron' | 'salute';
+export type ProviderName = 'deepgram' | 'nemotron' | 'whisper' | 'salute';
 
 /** Адаптер одного провайдера. Не путать с прод-интерфейсом STTProvider — здесь свой, узкий. */
 export interface SmokeRunner {
