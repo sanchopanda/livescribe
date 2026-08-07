@@ -73,9 +73,6 @@ function toSmokeEvent(frame: unknown): { isFinal: boolean; text: string; audioPo
   return { isFinal, text, audioPosSec: f.start, durationSec: f.duration };
 }
 
-/** Кадр типа `session.created` — ожидаемый служебный кадр, не транскрипт и не повод для warning. */
-const EXPECTED_NON_EVENT_TYPES = new Set(['session.created']);
-
 /** `type` кадра указывает на ошибку сервера (например `error`, `response.failed`). */
 function isErrorFrameType(type: string | undefined): boolean {
   if (!type) return false;
@@ -90,6 +87,31 @@ function errorFrameMessage(frame: unknown): string {
   if (f?.error?.message) return f.error.code ? `${f.error.code}: ${f.error.message}` : f.error.message;
   if (f?.message) return f.message;
   return JSON.stringify(frame);
+}
+
+// Типы кадров, у которых `toSmokeEvent` умеет извлекать текст (партиал/финал сегмента). Кадр
+// такого типа с пустым текстом — штатное дело потокового ASR (например пустой delta в самом
+// начале сегмента), а не повод для warning: тип опознан, схема не менялась.
+const RECOGNIZED_EVENT_TYPES = new Set([
+  'conversation.item.input_audio_transcription.delta',
+  'conversation.item.input_audio_transcription.completed',
+]);
+
+// Кадры, тип которых мы понимаем, но которые никогда не несут текст сами по себе (служебные).
+const KNOWN_EMPTY_FRAME_TYPES = new Set(['session.created']);
+
+/**
+ * Классифицирует кадр Together по `type`, не заглядывая в то, вернул ли `toSmokeEvent` событие —
+ * именно смешение этих двух вопросов было багом: пустой delta-кадр (штатное дело в стриминге)
+ * получал classification вместе с реально неопознанными типами и ложно печатал warning
+ * «сервер мог сменить схему». Здесь классификация зависит только от `type`.
+ */
+export function classifyFrame(frame: unknown): 'event' | 'error' | 'known-empty' | 'unknown' {
+  const type = (frame as { type?: string } | null)?.type;
+  if (isErrorFrameType(type)) return 'error';
+  if (type && RECOGNIZED_EVENT_TYPES.has(type)) return 'event';
+  if (type && KNOWN_EMPTY_FRAME_TYPES.has(type)) return 'known-empty';
+  return 'unknown';
 }
 
 /** Общая фабрика для любой модели транскрипции на Together Realtime API. */
@@ -138,20 +160,24 @@ export function createTogetherRunner(model: string, language: string, opts: { ra
         }
 
         const frameType = (frame as { type?: string })?.type;
-        if (isErrorFrameType(frameType)) {
-          console.error(`[together] сервер вернул ошибку (type=${frameType}): ${errorFrameMessage(frame)}`);
-          return;
-        }
-
-        const event = toSmokeEvent(frame);
-        if (event) {
-          onEvent(event);
-          return;
-        }
-
-        if (frameType && !EXPECTED_NON_EVENT_TYPES.has(frameType) && !warnedFrameTypes.has(frameType)) {
-          warnedFrameTypes.add(frameType);
-          console.warn(`[together] неизвестный тип кадра: ${frameType} — сервер мог сменить схему`);
+        switch (classifyFrame(frame)) {
+          case 'error':
+            console.error(`[together] сервер вернул ошибку (type=${frameType}): ${errorFrameMessage(frame)}`);
+            return;
+          case 'event': {
+            const event = toSmokeEvent(frame);
+            if (event) onEvent(event);
+            // Пустой delta/completed — штатное дело в стриминге, тихо игнорируем без warning.
+            return;
+          }
+          case 'known-empty':
+            // Например session.created — служебный кадр, никогда не несёт текст, это норма.
+            return;
+          case 'unknown':
+            if (frameType && !warnedFrameTypes.has(frameType)) {
+              warnedFrameTypes.add(frameType);
+              console.warn(`[together] неизвестный тип кадра: ${frameType} — сервер мог сменить схему`);
+            }
         }
       });
     },
