@@ -44,6 +44,19 @@ let activeRecordingStartMessage: {
 } | null = null;
 let perTrackRecoveryInProgress = false;
 
+/**
+ * Последний известный статус STT-провайдера (LS-04, ревью-фикс). Сервер шлёт
+ * `stt_status` только при смене агрегата, а background — единственный
+ * долгоживущий получатель (offscreen пересылает сюда, а не в content script
+ * напрямую) — content script может перезагрузиться (навигация в SPA, ручной
+ * reload вкладки) и никогда больше не получить это сообщение, хотя проблема
+ * никуда не делась. GET_STATUS отдаёт это значение, чтобы content script при
+ * инициализации восстановил баннер, а не молчал, думая, что всё в порядке.
+ * Тот же паттерн, что уже применяется для `perTrackRecoveryInProgress`/`wsRecovering`.
+ */
+type SttStatusState = 'ok' | 'reconnecting' | 'failed';
+let lastSttStatus: SttStatusState | null = null;
+
 interface TrackSpeakerLevel {
   participantId: string;
   speaker: string | null;
@@ -664,6 +677,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       chrome.storage.local.remove(['skriboToken', 'skriboAccountEmail']).catch(() => {});
     }
 
+    // LS-04 (ревью): запоминаем последний статус здесь, а не только пересылаем —
+    // background переживает reload content script'а, и GET_STATUS должен суметь
+    // отдать актуальное значение даже если это сообщение никто не увидел живьём.
+    if (
+      wsMessage.type === 'stt_status' &&
+      (wsMessage.state === 'ok' || wsMessage.state === 'reconnecting' || wsMessage.state === 'failed')
+    ) {
+      lastSttStatus = wsMessage.state;
+    }
+
     // Forward websocket messages to the tab where recording was started.
     // Content script needs `status` to receive `sessionId` for speaker updates.
     // `stt_status` (LS-04) drives the STT-health banner in the widget.
@@ -798,6 +821,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     activeCallKey = buildCallKey(sender.tab?.url, sender.tab?.id);
     activeMeetingId = null;
     perTrackRecoveryInProgress = false;
+    // Новая сессия начинается с чистого статуса STT — прошлая деградация (если
+    // была) относилась к прошлому звонку, а не к этому (LS-04, ревью).
+    lastSttStatus = null;
     broadcastWsRecoveryStatus();
     resetAudioLevels();
     broadcastAudioLevels();
@@ -890,6 +916,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     recordingTabId = null;
     activeRecordingStartMessage = null;
     perTrackRecoveryInProgress = false;
+    // Запись остановлена — сохранённый статус STT больше ни на что не влияет
+    // и не должен просочиться в баннер следующей записи (LS-04, ревью).
+    lastSttStatus = null;
     broadcastWsRecoveryStatus();
     resetAudioLevels();
     broadcastAudioLevels();
@@ -925,6 +954,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               status: getUiStatus(),
               sessionId,
               wsRecovering: perTrackRecoveryInProgress,
+              sttStatus: lastSttStatus,
               ...getAudioMetricsSnapshot(),
             });
             return;
@@ -941,6 +971,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 status: getUiStatus(),
                 sessionId,
                 wsRecovering: perTrackRecoveryInProgress,
+                sttStatus: lastSttStatus,
                 ...getAudioMetricsSnapshot(),
               });
             })
@@ -950,6 +981,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 status: getUiStatus(),
                 sessionId,
                 wsRecovering: perTrackRecoveryInProgress,
+                sttStatus: lastSttStatus,
                 ...getAudioMetricsSnapshot(),
               });
             });
@@ -965,6 +997,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               status: getUiStatus(),
               sessionId,
               wsRecovering: perTrackRecoveryInProgress,
+              sttStatus: lastSttStatus,
               ...getAudioMetricsSnapshot(),
             });
           })
@@ -973,6 +1006,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               status: getUiStatus(),
               sessionId,
               wsRecovering: perTrackRecoveryInProgress,
+              sttStatus: lastSttStatus,
               ...getAudioMetricsSnapshot(),
             });
           });
@@ -1042,6 +1076,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         setWsStateDisconnected('DISCONNECT');
         activeRecordingStartMessage = null;
         perTrackRecoveryInProgress = false;
+        lastSttStatus = null;
         broadcastWsRecoveryStatus();
         sendResponse(response);
       })

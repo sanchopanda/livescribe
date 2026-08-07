@@ -412,6 +412,20 @@ function requestCurrentStatusAndMetrics(): void {
       isCapturing = true;
       contentSessionId = response.sessionId || contentSessionId;
       wsRecovering = response.wsRecovering === true;
+      // LS-04 (ревью): content script стартует с чистого состояния при каждом
+      // reload, а сервер шлёт stt_status только при смене агрегата — без этого
+      // восстановления баннер деградации пропадал бы после reload вкладки,
+      // хотя проблема с распознаванием никуда не делась (background её помнит,
+      // см. lastSttStatus в service-worker.ts).
+      if (
+        response.sttStatus === 'ok' ||
+        response.sttStatus === 'reconnecting' ||
+        response.sttStatus === 'failed'
+      ) {
+        applySttStatus(response.sttStatus);
+      } else {
+        resetSttStatusBanner();
+      }
       updateStatus('recording');
       applyAudioMetrics({
         recordingStartedAtMs: response.recordingStartedAtMs ?? null,

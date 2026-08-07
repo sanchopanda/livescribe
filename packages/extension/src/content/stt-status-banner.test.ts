@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nextBannerState } from './stt-status-banner';
+import { nextBannerState, STT_BANNER_TEXT } from './stt-status-banner';
 
 describe('nextBannerState (LS-04)', () => {
   it('draws nothing for the very first ok (no prior degradation)', () => {
@@ -51,5 +51,18 @@ describe('nextBannerState (LS-04)', () => {
 
   it('keeps showing the error for repeated failed statuses', () => {
     expect(nextBannerState('failed', 'failed').kind).toBe('error');
+  });
+
+  it('does not promise reprocessing that the backend cannot actually do', () => {
+    // LS-04 (ревью): бэкенд после серии неудач не прекращает попытки, а просто
+    // реже их повторяет (см. reconnect-backoff.ts) — никакого отдельного
+    // конвейера повторной обработки записи не существует. Формулировка не
+    // должна намекать на него.
+    expect(STT_BANNER_TEXT.failed).not.toMatch(/появится позже/i);
+    expect(STT_BANNER_TEXT.failed).not.toMatch(/повторн/i);
+  });
+
+  it('tells the user attempts are ongoing, not abandoned', () => {
+    expect(STT_BANNER_TEXT.failed).toMatch(/продолжа/i);
   });
 });
