@@ -3,6 +3,7 @@
 
 import type { STTProvider, STTResult, STTResultCallback } from './types.js';
 import { createClient } from '@deepgram/sdk';
+import { createStreamClock, type StreamClock } from './stream-clock.js';
 
 export class DeepgramSTT implements STTProvider {
   private language: string = 'ru';
@@ -19,6 +20,9 @@ export class DeepgramSTT implements STTProvider {
   private langCode: string = 'en';
   private deepgramModel: string = 'nova-3';
   private static readonly MAX_BUFFERED_CHUNKS = 400;
+  // Сквозная шкала времени сессии: сглаживает сброс startSec к нулю
+  // при каждом реконнекте к Deepgram (см. LS-30).
+  private readonly streamClock: StreamClock = createStreamClock();
 
   private getApiKey(): string {
     const apiKey = process.env.DEEPGRAM_API_KEY;
@@ -152,8 +156,11 @@ export class DeepgramSTT implements STTProvider {
             confidence,
             language: this.langCode,
             // Offsets into the stream — used to attribute the segment to the speaker who was
-            // active when it was spoken, not when it arrived.
-            startSec: typeof payload.start === 'number' ? payload.start : undefined,
+            // active when it was spoken, not when it arrived. Смещение переводит startSec
+            // текущего (возможно, N-го после реконнекта) соединения в шкалу всей сессии.
+            startSec: this.streamClock.toSessionSec(
+              typeof payload.start === 'number' ? payload.start : undefined,
+            ),
             durationSec: typeof payload.duration === 'number' ? payload.duration : undefined,
           };
 
@@ -193,6 +200,10 @@ export class DeepgramSTT implements STTProvider {
     for (const chunk of buffered) {
       try {
         this.connection.send(new Uint8Array(chunk));
+        // Считаем байты только для успешно отправленных чанков — то, что
+        // не ушло в сокет, останется в audioBuffer и уйдёт в следующее
+        // соединение, попав в его шкалу с нуля (см. markReconnect).
+        this.streamClock.addSentBytes(chunk.length);
       } catch {
         this.audioBuffer.unshift(chunk);
         break;
@@ -213,6 +224,11 @@ export class DeepgramSTT implements STTProvider {
     }
 
     this.reconnectInProgress = true;
+
+    // Фиксируем смещение ДО создания нового соединения: новая сессия Deepgram
+    // начнёт отсчёт своего startSec с нуля, а смещение компенсирует это на
+    // выходе из processResults.
+    this.streamClock.markReconnect();
 
     try {
       this.connection?.finish?.();
