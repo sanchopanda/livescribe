@@ -49,18 +49,19 @@ export class DeepgramSTT implements STTProvider {
   // (см. reconnect-backoff.ts), а не выполняется немедленно на каждый чанк
   // аудио, который приходит пока соединение не 'open' — иначе при недоступном
   // Deepgram каждый чанк (~каждые 100мс) порождал новую попытку подключения.
+  // Реконнект НЕ прекращается сам по себе: после RECONNECT_MAX_ATTEMPTS
+  // подряд неудач (растущая фаза 500..8000мс) backoff переходит на постоянный
+  // редкий интервал (30с) и продолжает пытаться бесконечно — см. комментарий
+  // в reconnect-backoff.ts про то, почему полная остановка была регрессом.
   private readonly reconnectBackoff: ReconnectBackoff = createReconnectBackoff();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  // Терминальное состояние: лимит подряд неудачных попыток исчерпан. Пока
-  // выставлено, ни таймер, ни события транспорта больше не планируют реконнект —
-  // без этого флага close/error после исчерпания лимита продолжали бы вызывать
-  // scheduleReconnect(), а тот заново долбил бы Deepgram таймерами.
-  private failed = false;
   // finalize() закрывает соединение НАРОЧНО (конец сессии) — 'close', который
   // за этим следует, не должен планировать реконнект. Без этого флага
   // нормальный, успешный сценарий на finalize()+destroy() тоже получал бы
   // лишнее (но живое, платное) соединение к Deepgram прямо перед уничтожением
-  // провайдера — именно это показал сквозной прогон с настоящим ключом.
+  // провайдера — именно это показал сквозной прогон с настоящим ключом. Один
+  // раз выставленный, не сбрасывается обратно (инстанс всё равно выбрасывается
+  // после destroy() — см. там же).
   private stopping = false;
   private statusCallback: ((status: STTStatus) => void) | null = null;
   private lastEmittedStatus: STTStatus | null = null;
@@ -337,14 +338,15 @@ export class DeepgramSTT implements STTProvider {
    * обработчиков transport-событий (close/error/watchdog-timeout), а не из
    * processAudio() — иначе задержка не имела бы смысла: аудио приходит каждые
    * ~100мс, и каждый чанк заново запускал бы попытку.
+   *
+   * Никогда не останавливается сама (см. reconnect-backoff.ts): после
+   * RECONNECT_MAX_ATTEMPTS подряд неудач статус становится 'failed', но
+   * попытки продолжаются с постоянным (редким) интервалом — длинный обрыв
+   * должен самоисцеляться, а не убивать сессию до конца звонка.
    */
   private scheduleReconnect(): void {
     if (this.stopping) {
       // Соединение закрывается нарочно (finalize()/destroy()) — это не сбой.
-      return;
-    }
-    if (this.failed) {
-      // Лимит уже исчерпан раньше — терминально, больше не трогаем Deepgram.
       return;
     }
     if (this.reconnectTimer !== null) {
@@ -357,17 +359,12 @@ export class DeepgramSTT implements STTProvider {
     }
 
     const delayMs = this.reconnectBackoff.recordFailure();
-    if (delayMs === null) {
-      // Лимит подряд неудачных попыток (RECONNECT_MAX_ATTEMPTS) исчерпан —
-      // Deepgram считается недоступным, перестаём его долбить.
-      debugReconnect('RECONNECT_EXHAUSTED');
-      this.failed = true;
-      this.emitStatus('failed');
-      return;
-    }
+    const status: STTStatus = this.reconnectBackoff.isDegraded() ? 'failed' : 'reconnecting';
 
-    debugReconnect(`SCHEDULE_RECONNECT attempt=${this.reconnectBackoff.attempt} delayMs=${delayMs}`);
-    this.emitStatus('reconnecting');
+    debugReconnect(
+      `SCHEDULE_RECONNECT attempt=${this.reconnectBackoff.attempt} delayMs=${delayMs} status=${status}`,
+    );
+    this.emitStatus(status);
 
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
@@ -473,7 +470,13 @@ export class DeepgramSTT implements STTProvider {
 
   async destroy(): Promise<void> {
     // destroy() без предшествующего finalize() (например, если initialize()
-    // провайдера не удалось довести до конца) — тоже нарочное закрытие.
+    // провайдера не удалось довести до конца) — тоже нарочное закрытие. Не
+    // сбрасываем этот флаг обратно ниже — инстанс всё равно выбрасывается, а
+    // сброс ДО this.connection.finish() ровно воспроизводил бы баг, который
+    // stopping должен чинить: если 'close' на закрываемом соединении придёт
+    // синхронно (для сокета в CONNECTING это обычное поведение многих
+    // реализаций), он пройдёт все проверки и запланирует реконнект у
+    // провайдера, который уже в процессе уничтожения.
     this.stopping = true;
     this.connectWatchdog.cancel();
 
@@ -486,11 +489,6 @@ export class DeepgramSTT implements STTProvider {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
-    this.reconnectBackoff.reset();
-    this.failed = false;
-    this.stopping = false;
-    this.statusCallback = null;
-    this.lastEmittedStatus = null;
 
     if (this.connection) {
       try {
@@ -501,6 +499,9 @@ export class DeepgramSTT implements STTProvider {
       this.connection = null;
     }
 
+    this.reconnectBackoff.reset();
+    this.statusCallback = null;
+    this.lastEmittedStatus = null;
     this.deepgramClient = null;
     this.onResultCallback = null;
     this.partialResults = [];

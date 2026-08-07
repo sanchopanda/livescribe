@@ -230,6 +230,25 @@ export function registerWebSocketHandler(server: FastifyInstance) {
       lastAggregatedSttStatus = null;
     };
 
+    /**
+     * Провайдер участника, чья `initialize()` не смогла завершиться (`ready`
+     * отклонился), убирается из карты — но у него уже есть живая подписка
+     * `onStatusChange()` (LS-04): без явного `destroy()` он продолжал бы
+     * писать статусы в общий `sttStatuses` уже после того, как перестал
+     * существовать с точки зрения остального кода — осиротевший провайдер,
+     * дребезжащий в агрегат вечно.
+     */
+    const destroyOrphanedParticipant = async (participantId: string, provider: any) => {
+      participantProviders.delete(participantId);
+      try {
+        await provider.destroy();
+      } catch {
+        // ignore destroy errors — provider is being discarded anyway
+      }
+      sttStatuses.delete(participantId);
+      sendSttStatusIfChanged();
+    };
+
     // If the session was tied to a persisted Meeting (i.e. a valid token was
     // presented on 'start'), stamp it with an end time + duration. No-op for
     // anonymous sessions (no meetingId).
@@ -492,9 +511,7 @@ export function registerWebSocketHandler(server: FastifyInstance) {
                 try {
                   await participantEntry.ready;
                 } catch (err) {
-                  participantProviders.delete(participantId);
-                  sttStatuses.delete(participantId);
-                  sendSttStatusIfChanged();
+                  await destroyOrphanedParticipant(participantId, participantProvider);
                   throw err;
                 }
               } else if (normalizedParticipantSpeaker) {
@@ -504,9 +521,7 @@ export function registerWebSocketHandler(server: FastifyInstance) {
               try {
                 await participantEntry.ready;
               } catch (err) {
-                participantProviders.delete(participantId);
-                sttStatuses.delete(participantId);
-                sendSttStatusIfChanged();
+                await destroyOrphanedParticipant(participantId, participantEntry.provider);
                 throw err;
               }
 
