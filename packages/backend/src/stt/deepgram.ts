@@ -5,11 +5,20 @@ import type { STTProvider, STTResult, STTResultCallback } from './types.js';
 import { createClient } from '@deepgram/sdk';
 import { createStreamClock, type StreamClock } from './stream-clock.js';
 import { isActiveConnection } from './connection-guard.js';
+import { shouldReconnect, type ConnectionState } from './connection-state.js';
+
+// LS-31: диагностика гонки реконнекта, включается только через переменную
+// окружения — постоянный инструмент, не временные console.log на выброс.
+function debugReconnect(label: string): void {
+  if (!process.env.STT_DEBUG_RECONNECT) {
+    return;
+  }
+  console.log(`[dg ${Date.now()}] ${label}`);
+}
 
 export class DeepgramSTT implements STTProvider {
   private language: string = 'ru';
   private initialized = false;
-  private reconnectInProgress = false;
 
   private deepgramClient: ReturnType<typeof createClient> | null = null;
   private connection: any = null;
@@ -17,7 +26,10 @@ export class DeepgramSTT implements STTProvider {
   private partialResults: STTResult[] = [];
   private finalResults: STTResult[] = [];
   private audioBuffer: Buffer[] = [];
-  private connectionOpen: boolean = false;
+  // LS-31: заменяет булев connectionOpen — различает "открывается" и "умерло",
+  // чтобы processAudio() не пытался реконнектиться во время самого первого
+  // открытия соединения (см. connection-state.ts).
+  private connectionState: ConnectionState = 'closed';
   private langCode: string = 'en';
   private deepgramModel: string = 'nova-3';
   private static readonly MAX_BUFFERED_CHUNKS = 400;
@@ -117,16 +129,29 @@ export class DeepgramSTT implements STTProvider {
     });
 
     this.connection = connection;
-    this.connectionOpen = false;
+    // Сразу после создания соединение "открывается", а не "открыто" — до
+    // события 'open' аудио должно копиться в audioBuffer, а не провоцировать
+    // tryReconnect() (LS-31).
+    this.connectionState = 'connecting';
 
     connection.on('open', () => {
-      this.connectionOpen = true;
-      this.reconnectInProgress = false;
+      // Событие может прийти от соединения, которое реконнект уже вытеснил
+      // (this.connection указывает на более новое) — тогда его нельзя
+      // применять к живому состоянию.
+      if (!isActiveConnection(this.connection, connection)) {
+        return;
+      }
+      debugReconnect('open');
+      this.connectionState = 'open';
       this.flushBufferedAudio();
     });
 
     connection.on('error', () => {
-      this.connectionOpen = false;
+      if (!isActiveConnection(this.connection, connection)) {
+        return;
+      }
+      debugReconnect('error');
+      this.connectionState = 'closed';
     });
 
     connection.on('warning', () => {
@@ -198,12 +223,16 @@ export class DeepgramSTT implements STTProvider {
     });
 
     connection.on('close', () => {
-      this.connectionOpen = false;
+      if (!isActiveConnection(this.connection, connection)) {
+        return;
+      }
+      debugReconnect('close');
+      this.connectionState = 'closed';
     });
   }
 
   private flushBufferedAudio(): void {
-    if (!this.connection || !this.connectionOpen || this.audioBuffer.length === 0) {
+    if (!this.connection || this.connectionState !== 'open' || this.audioBuffer.length === 0) {
       return;
     }
 
@@ -230,11 +259,23 @@ export class DeepgramSTT implements STTProvider {
   }
 
   private tryReconnect(): void {
-    if (!this.initialized || !this.deepgramClient || this.reconnectInProgress) {
+    // LS-31: реконнект допустим только из состояния 'closed'. Пока соединение
+    // 'connecting' (самое начало сессии) или уже 'open', это no-op — аудио
+    // либо копится в audioBuffer до 'open', либо уже уходит в живое
+    // соединение. Раньше вместо этого проверялся булев connectionOpen, из-за
+    // чего 'connecting' и 'closed' были неразличимы, и любой вызов
+    // processAudio() до первого 'open' создавал лишнее второе соединение.
+    if (!this.deepgramClient || !shouldReconnect(this.connectionState, this.initialized)) {
       return;
     }
 
-    this.reconnectInProgress = true;
+    debugReconnect('RECONNECT');
+
+    // createConnection() ниже синхронно переводит состояние в 'connecting'
+    // ещё до возврата из этого метода, так что параллельный повторный вызов
+    // tryReconnect() (например, из следующего чанка того же тика) увидит
+    // уже не 'closed' и сам собой откажется реконнектиться — отдельный флаг
+    // reconnectInProgress для этого больше не нужен.
 
     // Фиксируем смещение ДО создания нового соединения: новая сессия Deepgram
     // начнёт отсчёт своего startSec с нуля, а смещение компенсирует это на
@@ -250,7 +291,9 @@ export class DeepgramSTT implements STTProvider {
     try {
       this.createConnection();
     } catch {
-      this.reconnectInProgress = false;
+      // Состояние осталось 'closed' (createConnection не успел выставить
+      // 'connecting' до падения) — следующий вызов processAudio() сам
+      // спровоцирует повторную попытку, отдельный флаг для этого не нужен.
     }
   }
 
@@ -261,7 +304,12 @@ export class DeepgramSTT implements STTProvider {
 
     this.queueAudioChunk(audioBuffer);
 
-    if (!this.connectionOpen) {
+    if (this.connectionState !== 'open') {
+      // LS-31: пока состояние 'connecting' (самое начало сессии), tryReconnect()
+      // ниже — no-op, а аудио остаётся в audioBuffer и уйдёт по 'open' через
+      // flushBufferedAudio(). Раньше здесь была одна и та же ветка что для
+      // 'connecting', что и для реально умершего соединения, и она всегда
+      // запускала реконнект.
       this.tryReconnect();
       return null;
     }
@@ -282,7 +330,7 @@ export class DeepgramSTT implements STTProvider {
 
       return latestFinal || latestPartial;
     } catch {
-      this.connectionOpen = false;
+      this.connectionState = 'closed';
       this.tryReconnect();
       return null;
     }
@@ -321,8 +369,7 @@ export class DeepgramSTT implements STTProvider {
     this.partialResults = [];
     this.finalResults = [];
     this.audioBuffer = [];
-    this.connectionOpen = false;
-    this.reconnectInProgress = false;
+    this.connectionState = 'closed';
     this.initialized = false;
     // console.log('Deepgram resources cleaned up');
   }
