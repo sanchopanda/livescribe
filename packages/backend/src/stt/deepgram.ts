@@ -6,6 +6,7 @@ import { createClient } from '@deepgram/sdk';
 import { createStreamClock, type StreamClock } from './stream-clock.js';
 import { isActiveConnection } from './connection-guard.js';
 import { shouldReconnect, type ConnectionState } from './connection-state.js';
+import { createConnectWatchdog, type ConnectWatchdog } from './connect-watchdog.js';
 
 // LS-31: диагностика гонки реконнекта, включается только через переменную
 // окружения — постоянный инструмент, не временные console.log на выброс.
@@ -33,6 +34,13 @@ export class DeepgramSTT implements STTProvider {
   private langCode: string = 'en';
   private deepgramModel: string = 'nova-3';
   private static readonly MAX_BUFFERED_CHUNKS = 400;
+  // LS-31 (доделка): @deepgram/sdk не даёт собственного connect-таймаута —
+  // без сторожевого таймера 'connecting' может провисеть вечно, если
+  // транспорт не эмитит вообще ничего (см. connect-watchdog.ts).
+  private static readonly CONNECT_TIMEOUT_MS = 8000;
+  private readonly connectWatchdog: ConnectWatchdog = createConnectWatchdog({
+    timeoutMs: DeepgramSTT.CONNECT_TIMEOUT_MS,
+  });
   // Сквозная шкала времени сессии: сглаживает сброс startSec к нулю
   // при каждом реконнекте к Deepgram (см. LS-30).
   private readonly streamClock: StreamClock = createStreamClock();
@@ -134,6 +142,20 @@ export class DeepgramSTT implements STTProvider {
     // tryReconnect() (LS-31).
     this.connectionState = 'connecting';
 
+    // Сторожевой таймер: если за CONNECT_TIMEOUT_MS транспорт не эмитнет ни
+    // 'open', ни 'close'/'error' (файрвол молча роняет пакеты, зависший
+    // TCP-хендшейк), состояние 'connecting' иначе провисело бы вечно —
+    // shouldReconnect() при 'connecting' всегда false, и tryReconnect()
+    // навсегда стал бы no-op. start() сам отменяет предыдущий таймер, так что
+    // он не переживает смену соединения.
+    this.connectWatchdog.start(() => {
+      if (!isActiveConnection(this.connection, connection)) {
+        return;
+      }
+      debugReconnect('WATCHDOG_TIMEOUT');
+      this.connectionState = 'closed';
+    });
+
     connection.on('open', () => {
       // Событие может прийти от соединения, которое реконнект уже вытеснил
       // (this.connection указывает на более новое) — тогда его нельзя
@@ -142,6 +164,7 @@ export class DeepgramSTT implements STTProvider {
         return;
       }
       debugReconnect('open');
+      this.connectWatchdog.cancel();
       this.connectionState = 'open';
       this.flushBufferedAudio();
     });
@@ -151,6 +174,7 @@ export class DeepgramSTT implements STTProvider {
         return;
       }
       debugReconnect('error');
+      this.connectWatchdog.cancel();
       this.connectionState = 'closed';
     });
 
@@ -227,6 +251,7 @@ export class DeepgramSTT implements STTProvider {
         return;
       }
       debugReconnect('close');
+      this.connectWatchdog.cancel();
       this.connectionState = 'closed';
     });
   }
@@ -291,9 +316,14 @@ export class DeepgramSTT implements STTProvider {
     try {
       this.createConnection();
     } catch {
-      // Состояние осталось 'closed' (createConnection не успел выставить
-      // 'connecting' до падения) — следующий вызов processAudio() сам
-      // спровоцирует повторную попытку, отдельный флаг для этого не нужен.
+      // Явно возвращаем 'closed', не полагаясь на то, что createConnection()
+      // упал раньше, чем успел выставить 'connecting': если исключение
+      // случится ПОСЛЕ этой строки внутри createConnection() (например, при
+      // навешивании обработчиков), состояние иначе зависло бы в 'connecting'
+      // без сторожевого таймера на этот путь — createConnection() бросает
+      // до вызова connectWatchdog.start(). Безусловный сброс здесь дешевле,
+      // чем разбираться, где именно упало.
+      this.connectionState = 'closed';
     }
   }
 
@@ -355,6 +385,8 @@ export class DeepgramSTT implements STTProvider {
   }
 
   async destroy(): Promise<void> {
+    this.connectWatchdog.cancel();
+
     if (this.connection) {
       try {
         this.connection.finish();
