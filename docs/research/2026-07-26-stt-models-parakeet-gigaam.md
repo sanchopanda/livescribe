@@ -65,3 +65,7 @@
 - nvidia/parakeet-tdt-0.6b-v3, nvidia/nemotron-speech-streaming, onnx-community/nemotron-3.5-asr-streaming (HuggingFace)
 - ai-sage/GigaAM-v3, salute-developers/GigaAM (GitHub), ekhodzitsky/gigastt
 - Sber open-source ASR release (пресса, ноя 2025)
+
+Проверка проведена (2026-08-06 — 2026-08-07): смок Nemotron/Whisper (Together AI) против
+nova-3 на реальных звонках — результаты в
+`docs/research/2026-08-06-cloud-stt-smoke-results.md`.
