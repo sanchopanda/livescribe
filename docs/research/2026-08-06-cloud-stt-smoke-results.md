@@ -52,8 +52,9 @@ SaluteSpeech (GigaAM) вне объёма — облачного доступа 
 
 Главная характеристика отзывчивости — как часто на экране появляется новый текст
 (`medianFinalIntervalMs`, столбец выше): **Deepgram отдаёт новый текст каждые ~3.8–3.9 с** на
-обеих записях, **Together (Nemotron/Whisper) с нашими VAD-настройками — раз в 8.9 с на
-короткой записи и 19.8 с на длинной**. Разница на порядок — но это не врождённое отставание
+обеих записях, **Together (Nemotron/Whisper) с нашими VAD-настройками — раз в ~8.9 с на
+короткой записи (8913 мс nemotron / 8894 мс whisper) и ≈19.5–19.8 с на длинной (19779 мс
+nemotron / 19529 мс whisper)**. Разница на порядок — но это не врождённое отставание
 моделей, а прямое следствие настройки `max_speech_duration_s=30` (см. ниже про VAD): мы сами
 выбрали длинные сегменты вместо частых коротких обрывков ради качества текста. При других
 настройках VAD интервал стал бы короче за счёт более рваного текста — компромисс,
@@ -101,12 +102,21 @@ Nemotron и Whisper держали одно WS-подключение до ко�
 
 ## Каталог и цены Together
 
-`GET /v1/models` показывает: **все** модели типа `transcribe` у Together идут по единой ставке
-**$0.0015/мин** (поле `pricing.transcribe.price_per_minute`) — включая
-`nvidia/nemotron-3.5-asr-streaming-0.6b`, `nvidia/parakeet-tdt-0.6b-v3`, `deepgram/nova-3-multi`,
-`deepgram/flux`, `openai/whisper-large-v3`, `nvidia/nemotron-3-asr-streaming-0.6b`. Для сравнения
-fal.ai просит ~$0.048/мин за ту же модель Nemotron — то есть Together дешевле фактически на
-порядок для одной и той же модели.
+Снято живым запросом `GET https://api.together.ai/v1/models` (2026-08-06): в каталоге 276
+моделей, из них **семь** с типом `transcribe`, и у всех семи одна и та же ставка
+`pricing.transcribe.price_per_minute = 0.0015` ($0.0015/мин):
+
+- `deepgram/flux`
+- `deepgram/nova-3-en`
+- `deepgram/nova-3-multi`
+- `nvidia/nemotron-3-asr-streaming-0.6b`
+- `nvidia/nemotron-3.5-asr-streaming-0.6b`
+- `nvidia/parakeet-tdt-0.6b-v3`
+- `openai/whisper-large-v3`
+
+Это снимок каталога и цен на конкретную дату — Together может их поменять, при повторной
+проверке сверяться заново. Для сравнения fal.ai просит ~$0.048/мин за ту же модель Nemotron —
+то есть Together дешевле фактически на порядок для одной и той же модели.
 
 **Почему не напрямую у NVIDIA.** У NVIDIA нет поминутного STT-API как продукта:
 `build.nvidia.com` — витрина для прототипирования, а продакшн-путь (NIM/Riva) означает свой
