@@ -666,7 +666,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     // Forward websocket messages to the tab where recording was started.
     // Content script needs `status` to receive `sessionId` for speaker updates.
-    if (wsMessage.type === 'status' || wsMessage.type === 'partial' || wsMessage.type === 'final' || wsMessage.type === 'error') {
+    // `stt_status` (LS-04) drives the STT-health banner in the widget.
+    if (
+      wsMessage.type === 'status' ||
+      wsMessage.type === 'partial' ||
+      wsMessage.type === 'final' ||
+      wsMessage.type === 'error' ||
+      wsMessage.type === 'stt_status'
+    ) {
       forwardToContentScript({ type: 'WS_MESSAGE', message: wsMessage });
     }
     return false;

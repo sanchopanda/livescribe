@@ -5,6 +5,7 @@ import { createPlatformAdapter } from './platform/platform-adapter';
 import { RecordingController } from './recording/recording-controller';
 import { researchPanelHtml, setupResearchPanel } from './research/research-panel';
 import { AUTO_SHOW_WIDGET_KEY, getAutoShowWidget } from '../settings/widget-settings';
+import { nextBannerState, type SttBannerKind, type SttStatusState } from './stt-status-banner';
 
 declare const __DEV_TOOLS__: boolean;
 
@@ -21,6 +22,14 @@ let metricsTickerId: number | null = null;
 let wsRecovering = false;
 let wsRecoveredToastUntilMs = 0;
 let wsRecoveredToastTimerId: number | null = null;
+
+// STT-статус (LS-04): состояние связи бэкенда с провайдером распознавания,
+// не путать с wsRecovering выше — то про WS-соединение расширения с бэкендом.
+let lastSttStatusState: SttStatusState | null = null;
+let sttBannerKind: SttBannerKind = 'hidden';
+let sttBannerText = '';
+let sttRecoveredHideTimerId: number | null = null;
+const STT_RECOVERED_DISPLAY_MS = 3000;
 let audioLevelsMode: 'mixed' | 'per-track' = 'mixed';
 let mixedAudioLevel: { rms: number; peak: number; timestamp: number } | null = null;
 let speakerAudioLevels: Array<{
@@ -415,6 +424,7 @@ function requestCurrentStatusAndMetrics(): void {
     isCapturing = false;
     wsRecovering = false;
     clearRecoveredToast();
+    resetSttStatusBanner();
     updateStatus('idle');
     applyAudioMetrics({
       recordingStartedAtMs: null,
@@ -455,6 +465,72 @@ function clearRecoveredToast(): void {
   if (wsRecoveredToastTimerId !== null) {
     clearTimeout(wsRecoveredToastTimerId);
     wsRecoveredToastTimerId = null;
+  }
+}
+
+// Применяет новый stt_status: решает состояние баннера через чистую nextBannerState
+// и управляет таймером показа "восстановлено" — репрятывает старый, если баннер
+// сменился раньше, чем истёк предыдущий тост.
+function applySttStatus(state: SttStatusState): void {
+  const banner = nextBannerState(lastSttStatusState, state);
+  lastSttStatusState = state;
+
+  if (sttRecoveredHideTimerId !== null) {
+    clearTimeout(sttRecoveredHideTimerId);
+    sttRecoveredHideTimerId = null;
+  }
+
+  sttBannerKind = banner.kind;
+  sttBannerText = banner.text;
+
+  if (banner.kind === 'recovered') {
+    sttRecoveredHideTimerId = window.setTimeout(() => {
+      sttRecoveredHideTimerId = null;
+      sttBannerKind = 'hidden';
+      sttBannerText = '';
+      renderSttStatusBanner();
+    }, STT_RECOVERED_DISPLAY_MS);
+  }
+
+  renderSttStatusBanner();
+}
+
+function resetSttStatusBanner(): void {
+  lastSttStatusState = null;
+  sttBannerKind = 'hidden';
+  sttBannerText = '';
+  if (sttRecoveredHideTimerId !== null) {
+    clearTimeout(sttRecoveredHideTimerId);
+    sttRecoveredHideTimerId = null;
+  }
+  renderSttStatusBanner();
+}
+
+function renderSttStatusBanner(): void {
+  const banner = document.getElementById('livescribe-stt-status');
+  if (!banner) return;
+
+  if (sttBannerKind === 'hidden') {
+    banner.style.display = 'none';
+    banner.textContent = '';
+    return;
+  }
+
+  banner.style.display = 'block';
+  banner.textContent = sttBannerText;
+
+  if (sttBannerKind === 'warning') {
+    banner.style.background = '#fefce8';
+    banner.style.color = '#854d0e';
+    banner.style.borderColor = '#fde68a';
+  } else if (sttBannerKind === 'error') {
+    banner.style.background = '#fee2e2';
+    banner.style.color = '#991b1b';
+    banner.style.borderColor = '#fca5a5';
+  } else if (sttBannerKind === 'recovered') {
+    banner.style.background = '#ecfdf5';
+    banner.style.color = '#166534';
+    banner.style.borderColor = '#86efac';
   }
 }
 
@@ -884,6 +960,13 @@ function createUIWidget() {
         border: 1px solid #fdba74;
         display: none;
       "></div>
+      <div id="livescribe-stt-status" style="
+        margin-bottom: 8px;
+        padding: 6px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        display: none;
+      "></div>
       <div id="livescribe-audio-levels" style="display: none; margin-bottom: 8px; padding: 8px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 4px;">
         <div style="font-size: 11px; color: #374151; font-weight: 600; margin-bottom: 4px;">Audio levels</div>
         <div id="livescribe-audio-levels-content"></div>
@@ -986,6 +1069,7 @@ function createUIWidget() {
 
   renderAudioMetrics();
   renderWsRecoveryIndicator();
+  renderSttStatusBanner();
   renderAudioLevels();
   requestCurrentStatusAndMetrics();
   void loadTriggers().then(renderTriggers);
@@ -1304,6 +1388,7 @@ async function handleStop() {
   wsRecovering = false;
   clearRecoveredToast();
   renderWsRecoveryIndicator();
+  resetSttStatusBanner();
 }
 
 async function handleReset() {
@@ -1313,6 +1398,7 @@ async function handleReset() {
   wsRecovering = false;
   clearRecoveredToast();
   renderWsRecoveryIndicator();
+  resetSttStatusBanner();
 
   chrome.runtime.sendMessage(
     {
@@ -1462,6 +1548,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     } else if (wsMessage.type === 'status' && wsMessage.sessionId) {
       contentSessionId = wsMessage.sessionId;
       trackModeController.ensureStarted('ws:status');
+    } else if (wsMessage.type === 'stt_status') {
+      applySttStatus(wsMessage.state);
     }
     return false;
   }
