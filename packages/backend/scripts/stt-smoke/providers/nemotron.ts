@@ -73,11 +73,33 @@ function toSmokeEvent(frame: unknown): { isFinal: boolean; text: string; audioPo
   return { isFinal, text, audioPosSec: f.start, durationSec: f.duration };
 }
 
+/** Кадр типа `session.created` — ожидаемый служебный кадр, не транскрипт и не повод для warning. */
+const EXPECTED_NON_EVENT_TYPES = new Set(['session.created']);
+
+/** `type` кадра указывает на ошибку сервера (например `error`, `response.failed`). */
+function isErrorFrameType(type: string | undefined): boolean {
+  if (!type) return false;
+  const t = type.toLowerCase();
+  return t.includes('error') || t.includes('failed');
+}
+
+/** Вытаскивает текст ошибки из кадра в формате OpenAI/Together Realtime ({ error: { message } }) или похожем. */
+function errorFrameMessage(frame: unknown): string {
+  const f = frame as { error?: { message?: string; code?: string } | string; message?: string };
+  if (typeof f?.error === 'string') return f.error;
+  if (f?.error?.message) return f.error.code ? `${f.error.code}: ${f.error.message}` : f.error.message;
+  if (f?.message) return f.message;
+  return JSON.stringify(frame);
+}
+
 /** Общая фабрика для любой модели транскрипции на Together Realtime API. */
 export function createTogetherRunner(model: string, language: string, opts: { raw: boolean; outDir: string }): SmokeRunner {
   let socket: WebSocket | null = null;
   let rawStream: ReturnType<typeof createWriteStream> | null = null;
   const rawFileName = `${model.replace(/[^a-z0-9]+/gi, '-')}-raw.jsonl`;
+  // Каждый неопознанный тип кадра — предупреждение один раз, а не на каждое сообщение
+  // (иначе смена схемы сервера залила бы консоль сотнями одинаковых строк за секунды).
+  const warnedFrameTypes = new Set<string>();
 
   return {
     async start(onEvent) {
@@ -94,6 +116,17 @@ export function createTogetherRunner(model: string, language: string, opts: { ra
         socket!.once('error', (err) => reject(new Error(`Together WS failed: ${err.message}`)));
       });
 
+      // Постоянные обработчики (в отличие от once-версий выше, которые нужны были только на
+      // время ожидания открытия). Без них обрыв соединения посреди прогона выглядел бы как
+      // деградация качества модели (события просто перестают приходить), а не как сетевая
+      // проблема — печатаем код/причину явно.
+      socket.on('error', (err) => {
+        console.error(`[together] WebSocket error после открытия: ${err.message}`);
+      });
+      socket.on('close', (code, reason) => {
+        console.error(`[together] WebSocket закрыт: code=${code} reason=${reason.toString() || '(нет)'}`);
+      });
+
       socket.on('message', (data) => {
         const text = data.toString();
         rawStream?.write(`${text}\n`);
@@ -103,8 +136,23 @@ export function createTogetherRunner(model: string, language: string, opts: { ra
         } catch {
           return;
         }
+
+        const frameType = (frame as { type?: string })?.type;
+        if (isErrorFrameType(frameType)) {
+          console.error(`[together] сервер вернул ошибку (type=${frameType}): ${errorFrameMessage(frame)}`);
+          return;
+        }
+
         const event = toSmokeEvent(frame);
-        if (event) onEvent(event);
+        if (event) {
+          onEvent(event);
+          return;
+        }
+
+        if (frameType && !EXPECTED_NON_EVENT_TYPES.has(frameType) && !warnedFrameTypes.has(frameType)) {
+          warnedFrameTypes.add(frameType);
+          console.warn(`[together] неизвестный тип кадра: ${frameType} — сервер мог сменить схему`);
+        }
       });
     },
 

@@ -13,7 +13,11 @@ const RATE_USD_PER_MIN: Record<ProviderName, number> = {
   deepgram: 0.0077, // nova-3 streaming, pay-as-you-go
   nemotron: 0.0015, // Together AI, price_per_minute из каталога моделей
   whisper: 0.0015, // Together AI, тот же тариф transcribe-моделей
-  salute: 0.015, // SaluteSpeech ~1,2 ₽/мин при курсе ~80 ₽/$
+  // SaluteSpeech: оценка по публичному прайсу (~1,2 ₽/мин при курсе ~80 ₽/$), НЕ подтверждено
+  // собственным прогоном — провайдер вне объёма смока (облачного доступа к GigaAM для физлица
+  // нет, см. docs/decisions/0005-stt-strategy-self-hosted-ru.md). Держим для полноты таблицы,
+  // но это не проверенный факт.
+  salute: 0.015,
 };
 
 export function timeToFirstEventMs(events: SmokeEvent[]): number | null {
@@ -35,11 +39,16 @@ function median(nums: number[]): number {
 
 /**
  * Насколько шкала времени провайдера (audioPosSec + durationSec) расходится с нашими часами
- * (msFromStart). НЕ измеряет воспринимаемую задержку ответа: провайдер учитывает тишину/паузы
- * в своей внутренней шкале по-своему, поэтому разница растёт в начале записи и дальше держится
- * на постоянном уровне (плато), не говоря ничего о том, отстаёт ли провайдер от реального темпа
- * аудио к концу звонка. Для этого — см. tailLatencyMs и medianFinalIntervalMs. Считается только
- * по событиям, где провайдер сообщил позицию; медиана, а не среднее — один долгий хвост иначе
+ * (msFromStart). НЕ измеряет воспринимаемую задержку ответа. У Deepgram расхождение (~13.6–13.8 с
+ * в смоке) — это не свойство метрики и не поведение провайдера в норме, а конкретный баг прод-
+ * адаптера: `tryReconnect()` в `packages/backend/src/stt/deepgram.ts` переподключается посреди
+ * звонка, и новая WS-сессия Deepgram считает `start` сегментов от своего собственного нуля —
+ * шкала провайдера съезжает, а `msFromStart` в смоке (от старта всего прогона) — нет. Сдвиг
+ * застывает на уровне реконнекта и держится до конца звонка (плато). Заведено как LS-30
+ * (`docs/backlog.md`). У провайдеров без реконнекта в сессии (Nemotron/Whisper в этом смоке)
+ * та же формула даёт правдоподобные величины. Для оценки реальной отзывчивости эта метрика не
+ * годится в любом случае — смотреть tailLatencyMs и medianFinalIntervalMs. Считается только по
+ * событиям, где провайдер сообщил позицию; медиана, а не среднее — один долгий хвост иначе
  * перекашивает картину.
  */
 export function medianFinalLagMs(events: SmokeEvent[]): number | null {
@@ -106,9 +115,11 @@ export function buildReport(runs: Array<{ provider: ProviderName; audioSec: numb
     '«Медианный интервал между финалами» — как часто провайдер присылает новый кусок текста,',
     'главная характеристика отзывчивости. «Сдвиг шкалы провайдера» — НЕ задержка ответа: это',
     'расхождение между часами прогона и внутренней позицией сегмента, которую сообщает сам',
-    'провайдер (audioPosSec + durationSec); оно растёт в начале записи и дальше держится на',
-    'постоянном уровне (плато) из-за того, как провайдер учитывает тишину в своей шкале — рост',
-    'не означает накопление реальной задержки._',
+    'провайдер (audioPosSec + durationSec). У Deepgram это не свойство метрики, а известный баг',
+    'прод-адаптера: реконнект посреди звонка (`tryReconnect()` в `src/stt/deepgram.ts`) обнуляет',
+    'шкалу сегментов у новой WS-сессии, сдвиг застывает на уровне реконнекта и держится до конца',
+    'записи (плато) — заведено как LS-30 (`docs/backlog.md`). Рост сдвига не означает накопление',
+    'реальной задержки._',
     '',
     '## Транскрипты',
     '',
@@ -125,6 +136,7 @@ if (invokedDirectly) {
   const { readFile, writeFile, readdir } = await import('node:fs/promises');
   const { join } = await import('node:path');
   const { parseWav, wavDurationMs } = await import('./feed.js');
+  const { metaPath, resolveAudioSec } = await import('./meta.js');
 
   const arg = (name: string): string | undefined => {
     const i = process.argv.indexOf(`--${name}`);
@@ -135,12 +147,13 @@ if (invokedDirectly) {
   const base = arg('file');
   if (!base) throw new Error('Usage: --file <basename без расширения> [--out dir] [--wav-dir dir]');
 
-  // Длительность аудио — из самого WAV-файла, а не из приближения по msFromStart последнего
-  // события: провайдер может закончить раньше или позже конца записи (см. tailLatencyMs),
-  // и на пустом jsonl приближение по событиям давало -Infinity.
+  // Длительность аудио по умолчанию (для прогонов без метафайла — см. ниже) — из самого
+  // WAV-файла, а не из приближения по msFromStart последнего события: провайдер может закончить
+  // раньше или позже конца записи (см. tailLatencyMs), и на пустом jsonl приближение по событиям
+  // давало -Infinity.
   const wavDir = arg('wav-dir') ?? 'recordings';
   const wav = parseWav(await readFile(join(wavDir, `${base}.wav`)));
-  const audioSec = wavDurationMs(wav) / 1000;
+  const wavDurationSec = wavDurationMs(wav) / 1000;
 
   const files = (await readdir(outDir)).filter((f) => f.startsWith(base) && f.endsWith('.jsonl'));
   const runs = [];
@@ -148,6 +161,12 @@ if (invokedDirectly) {
     const provider = f.slice(base.length + 1, -'.jsonl'.length) as ProviderName;
     const events: SmokeEvent[] = (await readFile(join(outDir, f), 'utf8'))
       .split('\n').filter(Boolean).map((line) => JSON.parse(line));
+
+    // Метафайл (пишет run.ts) знает фактическую длительность поданного аудио — учитывает
+    // --seconds. Без него (старые прогоны) падаем обратно на длину всего WAV-файла.
+    const metaRaw = await readFile(metaPath(outDir, base, provider), 'utf8').catch(() => null);
+    const audioSec = resolveAudioSec(metaRaw, wavDurationSec);
+
     runs.push({ provider, audioSec, events });
   }
 

@@ -12,8 +12,11 @@
 Читаются из `packages/backend/.env` (скрипт грузит его сам через `dotenv`):
 
 - `DEEPGRAM_API_KEY` — для провайдера `deepgram`.
-- `TOGETHER_API_KEY` — для провайдера `nemotron` (Together AI).
-- `SALUTE_CLIENT_ID`, `SALUTE_CLIENT_SECRET` — для провайдера `salute` (SaluteSpeech, OAuth).
+- `TOGETHER_API_KEY` — для провайдеров `nemotron` и `whisper` (оба идут через один и тот же
+  Together AI Realtime эндпоинт, см. `providers/nemotron.ts`).
+- Провайдер `salute` (SaluteSpeech/GigaAM) не реализован и не будет — облачного доступа к
+  GigaAM для физлица нет, решение зафиксировано в
+  `docs/decisions/0005-stt-strategy-self-hosted-ru.md`. Env-переменных для него не заводили.
 
 ## Команды
 
@@ -39,16 +42,40 @@ npm run stt:smoke -- --file recordings/<name>.wav --provider salute --seconds 30
 `scripts/stt-smoke/out`), `--raw` (сохранить сырые сообщения провайдера в
 `out/<model-slug>-raw.jsonl` — для nemotron/whisper).
 
-Результат — пара файлов в `out/`: `<recording>-<provider>.jsonl` (построчные события
-`{ msFromStart, isFinal, text, audioPosSec?, durationSec? }`) и `<recording>-<provider>.txt`
-(склеенный финальный текст, для чтения глазами).
+Результат — три файла в `out/`: `<recording>-<provider>.jsonl` (построчные события
+`{ msFromStart, isFinal, text, audioPosSec?, durationSec? }`), `<recording>-<provider>.txt`
+(склеенный финальный текст, для чтения глазами) и `<recording>-<provider>.meta.json`
+(`{ audioSec }` — фактическая длительность поданного аудио с учётом `--seconds`; читает
+`stt:report`, чтобы не путать обрезанный прогон с длиной всего WAV-файла).
 
-**`out/` не коммитить — там транскрипты реальных звонков.** Каталог уже в `.gitignore`.
+### Отчёт по прогонам
+
+```bash
+# Собирает все *-<provider>.jsonl с этим basename в out/ в одну сравнительную таблицу + транскрипты
+npm run stt:report -- --file <recording-basename> --out scripts/stt-smoke/out
+```
+
+Флаги: `--file <basename>` (обязателен; имя записи без `.wav` и без `-<provider>.jsonl`,
+например `recording-62a7123a-2026-02-18T08-04-37-722Z`), `--out <dir>` (по умолчанию
+`scripts/stt-smoke/out` — тот же каталог, что у `stt:smoke`), `--wav-dir <dir>` (по умолчанию
+`recordings` — куда смотреть за исходным WAV, если для какого-то прогона нет `.meta.json`).
+Результат — `out/<basename>-report.md`.
+
+**`out/` не коммитить целиком — там могут быть транскрипты реальных звонков.** Каталог уже в
+`.gitignore`. Короткие иллюстративные фрагменты (пара фраз, чтобы показать разницу «до/после»
+настройки VAD и т.п.) в доках и комментариях — допустимы, см. Findings ниже и
+`docs/research/2026-08-06-cloud-stt-smoke-results.md`.
+
+**После правок в `packages/backend/src/stt`** обязательно прогонять
+`npm run type-check:scripts` — этот скрипт жёстко импортирует прод-адаптер
+(`providers/deepgram.ts` → `createDeepgramRunner` из `src/stt`), а корневой `npm run type-check`
+`scripts/` не покрывает (у backend-пакета отдельный `tsconfig.scripts.json` для `scripts/**/*`,
+обычный `type-check` собирает только `src/**/*`).
 
 ## Findings
 
 Полный отчёт с таблицами метрик и диагнозом — в
-`.superpowers/sdd/2026-08-06-cloud-stt-smoke/task-3-report.md`. Здесь — выжимка по протоколу
+`docs/research/2026-08-06-cloud-stt-smoke-results.md`. Здесь — выжимка по протоколу
 Together AI Realtime, применимая к обеим моделям на этом эндпоинте (Nemotron 3.5, Whisper large-v3):
 
 - **Аутентификация** — `Authorization: Bearer <TOGETHER_API_KEY>` в заголовке при открытии WS,
@@ -104,9 +131,10 @@ Together AI Realtime, применимая к обеим моделям на э�
   `DeepgramSTT`, не ошибка метрики: коротко после начала звонка (13–18 с) происходит один
   реконнект (`tryReconnect()` в `src/stt/deepgram.ts`), после которого Deepgram присылает `start`
   относительно новой WS-сессии (снова от 0), а буферизованное за время реконнекта аудио прилетает
-  разом. Дальше `msFromStart` в смоке (считается от старта всего прогона) и `start` из новой
-  Deepgram-сессии просто не совпадают по нулевой точке — сдвиг застывает на ~13.5 с и держится
-  до конца звонка (не растёт, не уменьшается). У Nemotron/Whisper реконнектов не было, и та же
+  разом. Это отдельный баг прод-кода, заведён как **LS-30** в `docs/backlog.md` — метрика смока
+  тут просто вскрыла симптом. Дальше `msFromStart` в смоке (считается от старта всего прогона) и
+  `start` из новой Deepgram-сессии просто не совпадают по нулевой точке — сдвиг застывает на
+  ~13.5 с и держится до конца звонка (не растёт, не уменьшается). У Nemotron/Whisper реконнектов не было, и та же
   формула даёт правдоподобные 4–8 с — то есть сама формула считает верно, менять её не нужно, но
   **для реальной оценки отзывчивости эта метрика не годится ни для одного провайдера.** Смотреть
   нужно `tailLatencyMs` (пришёл ли последний финал раньше конца записи или после — отрицательное

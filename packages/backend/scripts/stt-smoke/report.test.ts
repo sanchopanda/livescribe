@@ -153,8 +153,11 @@ describe('costUsd', () => {
     expect(costUsd(600, 'nemotron')).toBeLessThan(costUsd(600, 'deepgram'));
   });
 
-  it('salute дороже deepgram на том же аудио', () => {
-    expect(costUsd(600, 'salute')).toBeGreaterThan(costUsd(600, 'deepgram'));
+  it('salute — оценка по прайсу, не проверенный факт: фиксирует значение из RATE_USD_PER_MIN', () => {
+    // Провайдер вне объёма смока (нет облачного доступа к GigaAM для физлица, см. ADR-0005) —
+    // к API ни разу не обращались, ставка не подтверждена собственным прогоном. Тест защищает
+    // от опечатки в константе, а не проверяет реальную цену.
+    expect(costUsd(600, 'salute')).toBeCloseTo(0.15, 3); // 10 мин × $0.015 (оценка)
   });
 });
 

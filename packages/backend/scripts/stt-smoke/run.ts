@@ -63,7 +63,7 @@ async function createRunner(args: Args): Promise<SmokeRunner> {
     return createWhisperRunner(args.language, { raw: args.raw, outDir: args.outDir });
   }
   // SaluteSpeech снят из объёма смока (облачного доступа к GigaAM для физлица нет) — файла providers/salute.ts нет.
-  throw new Error(`Provider "${args.provider}" is not implemented (see Задача 3 в брифе)`);
+  throw new Error(`Провайдер "${args.provider}" не реализован: облачного доступа к GigaAM для физлица нет, решение — docs/decisions/0005-stt-strategy-self-hosted-ru.md`);
 }
 
 async function main(): Promise<void> {
@@ -87,11 +87,11 @@ async function main(): Promise<void> {
   await feedRealtime(chunks, CHUNK_MS, (chunk) => runner.send(chunk));
   await runner.finish(TRAILING_MS);
 
-  const { jsonlPath, txtPath } = await sink.close();
+  const { jsonlPath, txtPath, metaPath } = await sink.close(audioSec);
   const finals = sink.events.filter((e) => e.isFinal).length;
   const firstEvent = sink.events[0]?.msFromStart;
   console.log(`provider=${args.provider} audio=${audioSec.toFixed(1)}s events=${sink.events.length} finals=${finals} first=${firstEvent ?? 'none'}ms`);
-  console.log(`  ${jsonlPath}\n  ${txtPath}`);
+  console.log(`  ${jsonlPath}\n  ${txtPath}\n  ${metaPath}`);
 }
 
 main().catch((err) => {
