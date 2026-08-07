@@ -4,6 +4,7 @@
 import type { STTProvider, STTResult, STTResultCallback } from './types.js';
 import { createClient } from '@deepgram/sdk';
 import { createStreamClock, type StreamClock } from './stream-clock.js';
+import { isActiveConnection } from './connection-guard.js';
 
 export class DeepgramSTT implements STTProvider {
   private language: string = 'ru';
@@ -137,6 +138,16 @@ export class DeepgramSTT implements STTProvider {
     });
 
     const processResults = (data: any) => {
+      // Соединение, к которому привязан этот обработчик, уже не текущее — значит,
+      // tryReconnect() успел его заменить, и это результат от старого соединения,
+      // догоняющий по сети. Он дублирует то, что распознаёт новое соединение, и
+      // офсет-шкала (stream-clock.ts) для него не подходит: offset уже посчитан
+      // для НОВОГО соединения, а не для того, что прислало этот результат.
+      // Отбрасываем целиком, не давая ему исказить монотонность startSec (LS-30).
+      if (!isActiveConnection(this.connection, connection)) {
+        return;
+      }
+
       try {
         const payload = typeof data === 'string' ? JSON.parse(data) : data;
 
