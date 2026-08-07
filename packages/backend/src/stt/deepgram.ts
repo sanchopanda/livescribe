@@ -1,12 +1,13 @@
 // Deepgram STT implementation using @deepgram/sdk
 // Documentation: https://developers.deepgram.com/docs
 
-import type { STTProvider, STTResult, STTResultCallback } from './types.js';
+import type { STTProvider, STTResult, STTResultCallback, STTStatus } from './types.js';
 import { createClient } from '@deepgram/sdk';
 import { createStreamClock, type StreamClock } from './stream-clock.js';
 import { isActiveConnection } from './connection-guard.js';
 import { shouldReconnect, type ConnectionState } from './connection-state.js';
 import { createConnectWatchdog, type ConnectWatchdog } from './connect-watchdog.js';
+import { createReconnectBackoff, type ReconnectBackoff } from './reconnect-backoff.js';
 
 // LS-31: диагностика гонки реконнекта, включается только через переменную
 // окружения — постоянный инструмент, не временные console.log на выброс.
@@ -44,6 +45,46 @@ export class DeepgramSTT implements STTProvider {
   // Сквозная шкала времени сессии: сглаживает сброс startSec к нулю
   // при каждом реконнекте к Deepgram (см. LS-30).
   private readonly streamClock: StreamClock = createStreamClock();
+  // LS-04: реконнект теперь планируется через setTimeout с растущей задержкой
+  // (см. reconnect-backoff.ts), а не выполняется немедленно на каждый чанк
+  // аудио, который приходит пока соединение не 'open' — иначе при недоступном
+  // Deepgram каждый чанк (~каждые 100мс) порождал новую попытку подключения.
+  private readonly reconnectBackoff: ReconnectBackoff = createReconnectBackoff();
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  // Терминальное состояние: лимит подряд неудачных попыток исчерпан. Пока
+  // выставлено, ни таймер, ни события транспорта больше не планируют реконнект —
+  // без этого флага close/error после исчерпания лимита продолжали бы вызывать
+  // scheduleReconnect(), а тот заново долбил бы Deepgram таймерами.
+  private failed = false;
+  // finalize() закрывает соединение НАРОЧНО (конец сессии) — 'close', который
+  // за этим следует, не должен планировать реконнект. Без этого флага
+  // нормальный, успешный сценарий на finalize()+destroy() тоже получал бы
+  // лишнее (но живое, платное) соединение к Deepgram прямо перед уничтожением
+  // провайдера — именно это показал сквозной прогон с настоящим ключом.
+  private stopping = false;
+  private statusCallback: ((status: STTStatus) => void) | null = null;
+  private lastEmittedStatus: STTStatus | null = null;
+
+  /**
+   * Подписка на статус соединения (LS-04). Не вызывается сразу с текущим
+   * статусом — до первого события подписчик по умолчанию считает всё 'ok',
+   * что совпадает с реальностью на момент initialize() (соединение только
+   * начинает открываться, ничего не сломано).
+   */
+  onStatusChange(cb: (status: STTStatus) => void): void {
+    this.statusCallback = cb;
+  }
+
+  private emitStatus(status: STTStatus): void {
+    // Дребезг гасим уже здесь: 'open' может сработать один раз, но
+    // reset()/emitStatus('ok') вызываются из одного места, так что задача
+    // этой проверки — не более чем defensive dedup на случай будущих правок.
+    if (this.lastEmittedStatus === status) {
+      return;
+    }
+    this.lastEmittedStatus = status;
+    this.statusCallback?.(status);
+  }
 
   private getApiKey(): string {
     const apiKey = process.env.DEEPGRAM_API_KEY;
@@ -154,6 +195,7 @@ export class DeepgramSTT implements STTProvider {
       }
       debugReconnect('WATCHDOG_TIMEOUT');
       this.connectionState = 'closed';
+      this.scheduleReconnect();
     });
 
     connection.on('open', () => {
@@ -167,6 +209,10 @@ export class DeepgramSTT implements STTProvider {
       this.connectWatchdog.cancel();
       this.connectionState = 'open';
       this.flushBufferedAudio();
+      // Успешное открытие — прошлая серия неудач не имеет значения для
+      // следующего разрыва, шкала задержек должна начаться заново с 500мс.
+      this.reconnectBackoff.reset();
+      this.emitStatus('ok');
     });
 
     connection.on('error', () => {
@@ -176,6 +222,7 @@ export class DeepgramSTT implements STTProvider {
       debugReconnect('error');
       this.connectWatchdog.cancel();
       this.connectionState = 'closed';
+      this.scheduleReconnect();
     });
 
     connection.on('warning', () => {
@@ -253,6 +300,7 @@ export class DeepgramSTT implements STTProvider {
       debugReconnect('close');
       this.connectWatchdog.cancel();
       this.connectionState = 'closed';
+      this.scheduleReconnect();
     });
   }
 
@@ -283,24 +331,60 @@ export class DeepgramSTT implements STTProvider {
     }
   }
 
-  private tryReconnect(): void {
-    // LS-31: реконнект допустим только из состояния 'closed'. Пока соединение
-    // 'connecting' (самое начало сессии) или уже 'open', это no-op — аудио
-    // либо копится в audioBuffer до 'open', либо уже уходит в живое
-    // соединение. Раньше вместо этого проверялся булев connectionOpen, из-за
-    // чего 'connecting' и 'closed' были неразличимы, и любой вызов
-    // processAudio() до первого 'open' создавал лишнее второе соединение.
+  /**
+   * Планирует следующую попытку реконнекта через setTimeout с задержкой из
+   * reconnect-backoff.ts, вместо немедленного вызова (LS-04). Вызывается из
+   * обработчиков transport-событий (close/error/watchdog-timeout), а не из
+   * processAudio() — иначе задержка не имела бы смысла: аудио приходит каждые
+   * ~100мс, и каждый чанк заново запускал бы попытку.
+   */
+  private scheduleReconnect(): void {
+    if (this.stopping) {
+      // Соединение закрывается нарочно (finalize()/destroy()) — это не сбой.
+      return;
+    }
+    if (this.failed) {
+      // Лимит уже исчерпан раньше — терминально, больше не трогаем Deepgram.
+      return;
+    }
+    if (this.reconnectTimer !== null) {
+      // Реконнект уже запланирован (например, и 'error', и 'close' пришли по
+      // одному разрыву) — не плодим параллельные таймеры на одну и ту же попытку.
+      return;
+    }
+    if (!this.deepgramClient || !shouldReconnect(this.connectionState, this.initialized)) {
+      return;
+    }
+
+    const delayMs = this.reconnectBackoff.recordFailure();
+    if (delayMs === null) {
+      // Лимит подряд неудачных попыток (RECONNECT_MAX_ATTEMPTS) исчерпан —
+      // Deepgram считается недоступным, перестаём его долбить.
+      debugReconnect('RECONNECT_EXHAUSTED');
+      this.failed = true;
+      this.emitStatus('failed');
+      return;
+    }
+
+    debugReconnect(`SCHEDULE_RECONNECT attempt=${this.reconnectBackoff.attempt} delayMs=${delayMs}`);
+    this.emitStatus('reconnecting');
+
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.performReconnect();
+    }, delayMs);
+  }
+
+  /** Собственно пересоздание соединения — то, что раньше называлось tryReconnect(). */
+  private performReconnect(): void {
+    // LS-31: реконнект допустим только из состояния 'closed'. Если к моменту
+    // срабатывания таймера соединение уже открылось или снова закрывается —
+    // это no-op, а не повод создавать лишнее параллельное соединение.
     if (!this.deepgramClient || !shouldReconnect(this.connectionState, this.initialized)) {
       return;
     }
 
     debugReconnect('RECONNECT');
-
-    // createConnection() ниже синхронно переводит состояние в 'connecting'
-    // ещё до возврата из этого метода, так что параллельный повторный вызов
-    // tryReconnect() (например, из следующего чанка того же тика) увидит
-    // уже не 'closed' и сам собой откажется реконнектиться — отдельный флаг
-    // reconnectInProgress для этого больше не нужен.
 
     // Фиксируем смещение ДО создания нового соединения: новая сессия Deepgram
     // начнёт отсчёт своего startSec с нуля, а смещение компенсирует это на
@@ -324,6 +408,7 @@ export class DeepgramSTT implements STTProvider {
       // до вызова connectWatchdog.start(). Безусловный сброс здесь дешевле,
       // чем разбираться, где именно упало.
       this.connectionState = 'closed';
+      this.scheduleReconnect();
     }
   }
 
@@ -335,12 +420,10 @@ export class DeepgramSTT implements STTProvider {
     this.queueAudioChunk(audioBuffer);
 
     if (this.connectionState !== 'open') {
-      // LS-31: пока состояние 'connecting' (самое начало сессии), tryReconnect()
-      // ниже — no-op, а аудио остаётся в audioBuffer и уйдёт по 'open' через
-      // flushBufferedAudio(). Раньше здесь была одна и та же ветка что для
-      // 'connecting', что и для реально умершего соединения, и она всегда
-      // запускала реконнект.
-      this.tryReconnect();
+      // LS-04: реконнект уже запланирован (или провайдер уже 'failed') через
+      // scheduleReconnect(), вызванный из обработчика close/error/watchdog —
+      // здесь просто копим аудио в audioBuffer, не трогая таймер повторно.
+      // Раньше здесь стоял немедленный tryReconnect() на каждый чанк.
       return null;
     }
 
@@ -361,7 +444,7 @@ export class DeepgramSTT implements STTProvider {
       return latestFinal || latestPartial;
     } catch {
       this.connectionState = 'closed';
-      this.tryReconnect();
+      this.scheduleReconnect();
       return null;
     }
   }
@@ -370,6 +453,10 @@ export class DeepgramSTT implements STTProvider {
     if (!this.connection) {
       return null;
     }
+
+    // Дальше идёт нарочное закрытие — 'close', который сейчас же придёт от
+    // транспорта, не должен планировать реконнект (см. комментарий у поля).
+    this.stopping = true;
 
     try {
       this.connection.finish();
@@ -385,7 +472,25 @@ export class DeepgramSTT implements STTProvider {
   }
 
   async destroy(): Promise<void> {
+    // destroy() без предшествующего finalize() (например, если initialize()
+    // провайдера не удалось довести до конца) — тоже нарочное закрытие.
+    this.stopping = true;
     this.connectWatchdog.cancel();
+
+    // LS-04: таймер реконнекта не должен переживать смену/уничтожение
+    // соединения — тот же класс ошибок, что уже был пойман со сторожевым
+    // таймером на connect (см. connect-watchdog.ts): без явной отмены он
+    // выстрелил бы после destroy() и попытался бы создать соединение у
+    // уже уничтоженного провайдера.
+    if (this.reconnectTimer !== null) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.reconnectBackoff.reset();
+    this.failed = false;
+    this.stopping = false;
+    this.statusCallback = null;
+    this.lastEmittedStatus = null;
 
     if (this.connection) {
       try {

@@ -4,6 +4,8 @@ import { AUTH_INVALID_TOKEN } from '@skribo/shared';
 import { SessionManager } from './session.js';
 import { createSTTProvider } from '../stt/index.js';
 import type { STTProviderType } from '../stt/index.js';
+import type { STTStatus } from '../stt/types.js';
+import { aggregateSttStatus } from '../stt/aggregate-status.js';
 import { prisma } from '../db/prisma.js';
 import { hashToken } from '../auth/tokens.js';
 import { appendSpeakerChange, pickSpeakerAt, segmentSpokenAt } from './speaker-timeline.js';
@@ -114,6 +116,24 @@ export function registerWebSocketHandler(server: FastifyInstance) {
     const participantProviders = new Map<string, ParticipantProviderEntry>();
     const participantChunkCount = new Map<string, number>();
 
+    // LS-04: в mixed-режиме на всю сессию один провайдер (ключ 'session'), в
+    // per-track — по одному на участника (ключ participantId). Статусы
+    // приходят из нескольких независимых источников, поэтому клиенту шлём не
+    // их напрямую, а agregateSttStatus() — и только когда агрегат меняется,
+    // иначе реконнект одного из N участников заливал бы клиента дребезгом.
+    const sttStatuses = new Map<string, STTStatus>();
+    let lastAggregatedSttStatus: STTStatus | null = null;
+
+    const sendSttStatusIfChanged = () => {
+      const aggregate = aggregateSttStatus(Array.from(sttStatuses.values()));
+      if (aggregate === lastAggregatedSttStatus) return;
+      lastAggregatedSttStatus = aggregate;
+
+      const message: ServerMessage = { type: 'stt_status', state: aggregate };
+      connection.send(JSON.stringify(message));
+      server.log.info({ conn, sessionId, state: aggregate }, 'STT status changed');
+    };
+
     server.log.info({ conn }, 'WebSocket client connected');
 
     const sendTranscript = (result: any, speaker?: string) => {
@@ -203,6 +223,11 @@ export function registerWebSocketHandler(server: FastifyInstance) {
       }
 
       participantProviders.clear();
+      // Тот же teardown обслуживает и mixed-режим (перезапуск сессии,
+      // 'stop', закрытие сокета) — статус session-провайдера тоже должен
+      // исчезнуть, а не тянуться дребезгом в следующую сессию.
+      sttStatuses.clear();
+      lastAggregatedSttStatus = null;
     };
 
     // If the session was tied to a persisted Meeting (i.e. a valid token was
@@ -356,7 +381,11 @@ export function registerWebSocketHandler(server: FastifyInstance) {
               const providerType = activeProviderType;
               // server.log.info(`Using STT provider: ${providerType} (from env: ${process.env.STT_PROVIDER || 'not set'})`);
               sttProvider = createSTTProvider(providerType);
-              
+              sttProvider.onStatusChange?.((status: STTStatus) => {
+                sttStatuses.set('session', status);
+                sendSttStatusIfChanged();
+              });
+
               // Create callback for real-time transcriptions (for streaming providers like Deepgram)
               const onResult = (result: any) => {
                 const session = sessionId ? sessionManager.getSession(sessionId) : undefined;
@@ -431,6 +460,10 @@ export function registerWebSocketHandler(server: FastifyInstance) {
 
               if (!participantEntry) {
                 const participantProvider = createSTTProvider(activeProviderType);
+                participantProvider.onStatusChange?.((status: STTStatus) => {
+                  sttStatuses.set(participantId, status);
+                  sendSttStatusIfChanged();
+                });
                 const ready = participantProvider.initialize(activeLanguage, (result: any) => {
                   const resolvedSpeaker = participantEntry?.speaker ?? formatParticipantFallback(participantId);
                   sendTranscript(result, resolvedSpeaker || undefined);
@@ -460,6 +493,8 @@ export function registerWebSocketHandler(server: FastifyInstance) {
                   await participantEntry.ready;
                 } catch (err) {
                   participantProviders.delete(participantId);
+                  sttStatuses.delete(participantId);
+                  sendSttStatusIfChanged();
                   throw err;
                 }
               } else if (normalizedParticipantSpeaker) {
@@ -470,6 +505,8 @@ export function registerWebSocketHandler(server: FastifyInstance) {
                 await participantEntry.ready;
               } catch (err) {
                 participantProviders.delete(participantId);
+                sttStatuses.delete(participantId);
+                sendSttStatusIfChanged();
                 throw err;
               }
 

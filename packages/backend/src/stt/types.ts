@@ -17,6 +17,17 @@ export interface STTResult {
 
 export type STTResultCallback = (result: STTResult) => void;
 
+/**
+ * Статус связи провайдера с распознаванием (LS-04), наружу транслируется как
+ * `stt_status` (см. `@skribo/shared` `SttStatusMessage`):
+ *  - 'ok' — соединение открыто, распознавание идёт;
+ *  - 'reconnecting' — соединение оборвалось, запланирована повторная попытка
+ *    с растущей задержкой (см. `reconnect-backoff.ts`);
+ *  - 'failed' — лимит подряд неудачных попыток исчерпан, реконнект больше не
+ *    предпринимается.
+ */
+export type STTStatus = 'ok' | 'reconnecting' | 'failed';
+
 export interface STTProvider {
   /**
    * Initialize the STT provider
@@ -43,6 +54,13 @@ export interface STTProvider {
    * Cleanup resources
    */
   destroy(): Promise<void>;
+
+  /**
+   * Subscribe to connection-status changes (LS-04). Optional so providers that don't stream
+   * (or don't reconnect) aren't forced to implement it. The callback fires only on transitions,
+   * not on every underlying event — callers decide what "changed" means for their own aggregate.
+   */
+  onStatusChange?(cb: (status: STTStatus) => void): void;
 }
 
 export type STTProviderType = 'deepgram';
