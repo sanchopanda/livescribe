@@ -3,6 +3,7 @@ import { TrackSpeakerBinding } from './speaker-binding';
 
 const SERGEY = { participantId: 'spaces/Z2eZuCUpKwIB/devices/555', speaker: 'Сергей Чумеров' };
 const DANIIL = { participantId: 'spaces/Z2eZuCUpKwIB/devices/556', speaker: 'Даниил Никишкин' };
+const ANNA = { participantId: 'spaces/Z2eZuCUpKwIB/devices/558', speaker: 'Анна' };
 const TRACK_A = '33f1a44f-0d1e-4af0-a9c6-bba5b1d58b73';
 const TRACK_B = 'd5c1572e-9cfa-43eb-ae4c-b9c23b398f88';
 const LOCAL = 'a1b2c3d4-0000-4000-8000-000000000000';
@@ -116,6 +117,7 @@ describe('TrackSpeakerBinding', () => {
 
   it('перевязывает дорожку, когда Meet отдал слот другому участнику', () => {
     // Слотов больше, чем участников (наблюдали 4 на 3), и Meet их переиспользует.
+    // Три миссинга от Дани́ла дропают привязку Сергея. Потом нужны три новых согласных наблюдения.
     const binding = new TrackSpeakerBinding();
     const withSergey = { tracks: [{ trackId: TRACK_A, rms: LOUD }], domSpeaker: SERGEY };
     const withDaniil = { tracks: [{ trackId: TRACK_A, rms: LOUD }], domSpeaker: DANIIL };
@@ -123,15 +125,41 @@ describe('TrackSpeakerBinding', () => {
     binding.observe(withSergey);
     binding.observe(withSergey);
     binding.observe(withSergey);
-
-    binding.observe(withDaniil);
-    binding.observe(withDaniil);
     expect(binding.speakerFor(TRACK_A)).toBe(SERGEY.speaker);
 
+    // Three misses from Daniil drop Sergey's binding.
+    binding.observe(withDaniil);
+    binding.observe(withDaniil);
+    expect(binding.observe(withDaniil)).toEqual([]);
+    expect(binding.speakerFor(TRACK_A)).toBeNull();
+
+    // Three new agreeing observations confirm Daniil.
+    binding.observe(withDaniil);
+    binding.observe(withDaniil);
     expect(binding.observe(withDaniil)).toEqual([
       { trackId: TRACK_A, participantId: DANIIL.participantId, speaker: DANIIL.speaker },
     ]);
     expect(binding.speakerFor(TRACK_A)).toBe(DANIIL.speaker);
+  });
+
+  it('не сбрасывает привязку при шуме: три наблюдения разных участников не накапливаются', () => {
+    // Confirmed binding on Sergey should persist when mismatches come from different participants.
+    const binding = new TrackSpeakerBinding();
+    const withSergey = { tracks: [{ trackId: TRACK_A, rms: LOUD }], domSpeaker: SERGEY };
+    const withDaniil = { tracks: [{ trackId: TRACK_A, rms: LOUD }], domSpeaker: DANIIL };
+    const withAnna = { tracks: [{ trackId: TRACK_A, rms: LOUD }], domSpeaker: ANNA };
+
+    binding.observe(withSergey);
+    binding.observe(withSergey);
+    binding.observe(withSergey);
+    expect(binding.speakerFor(TRACK_A)).toBe(SERGEY.speaker);
+
+    // Mismatches from three different participants: none accumulate, Sergey stays confirmed.
+    binding.observe(withDaniil);
+    binding.observe(withAnna);
+    binding.observe(withDaniil);
+
+    expect(binding.speakerFor(TRACK_A)).toBe(SERGEY.speaker);
   });
 
   it('держит одного участника ровно на одной дорожке', () => {

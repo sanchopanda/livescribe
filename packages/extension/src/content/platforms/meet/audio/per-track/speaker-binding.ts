@@ -33,6 +33,7 @@ interface Candidate {
 interface Confirmed {
   participantId: string;
   speaker: string;
+  lastDisagreeingParticipantId?: string;
   misses: number;
 }
 
@@ -56,23 +57,24 @@ export class TrackSpeakerBinding {
 
     if (confirmed && confirmed.participantId === speaker.participantId) {
       confirmed.misses = 0;
+      confirmed.lastDisagreeingParticipantId = undefined;
       return [];
     }
 
     if (confirmed) {
-      confirmed.misses += 1;
-      if (confirmed.misses < RESET_MISSES) return [];
-      this.confirmedByTrackId.delete(trackId);
+      // Disagreement from a different participant: only consecutive observations accumulate.
+      if (confirmed.lastDisagreeingParticipantId === speaker.participantId) {
+        confirmed.misses += 1;
+      } else {
+        confirmed.lastDisagreeingParticipantId = speaker.participantId;
+        confirmed.misses = 1;
+      }
 
-      // When a confirmed binding is dropped due to too many misses, immediately rebind to the new participant.
+      if (confirmed.misses < RESET_MISSES) return [];
+      // Too many misses from this participant, drop the binding. Do not immediately confirm the new participant.
+      this.confirmedByTrackId.delete(trackId);
       this.candidateByTrackId.delete(trackId);
-      this.dropOtherTracksOf(speaker.participantId, trackId);
-      this.confirmedByTrackId.set(trackId, {
-        participantId: speaker.participantId,
-        speaker: speaker.speaker,
-        misses: 0,
-      });
-      return [{ trackId, participantId: speaker.participantId, speaker: speaker.speaker }];
+      return [];
     }
 
     const candidate = this.candidateByTrackId.get(trackId);
@@ -94,6 +96,7 @@ export class TrackSpeakerBinding {
     this.confirmedByTrackId.set(trackId, {
       participantId: speaker.participantId,
       speaker: speaker.speaker,
+      lastDisagreeingParticipantId: undefined,
       misses: 0,
     });
 
