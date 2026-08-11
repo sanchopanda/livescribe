@@ -59,7 +59,7 @@ export interface BindingChange { trackId: string; participantId: string; speaker
 
 export class TrackSpeakerBinding {
   observe(observation: BindingObservation): BindingChange[]; // подтверждённые привязки за этот такт
-  speakerFor(trackId: string): { participantId: string; speaker: string } | null;
+  speakerFor(trackId: string): string | null;
   reset(): void;
 }
 ```
