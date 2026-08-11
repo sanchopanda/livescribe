@@ -879,6 +879,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
+  if (message.type === 'PARTICIPANT_RENAME') {
+    sendToOffscreen({
+      type: 'OFFSCREEN_PARTICIPANT_RENAME',
+      sessionId: message.sessionId,
+      participantId: message.participantId,
+      speaker: message.speaker,
+    }).catch(() => {
+      // ignore
+    });
+    return false;
+  }
+
   if (message.type === 'TRACK_AUDIO_CHUNK') {
     sendToOffscreen({
       type: 'OFFSCREEN_TRACK_AUDIO_CHUNK',

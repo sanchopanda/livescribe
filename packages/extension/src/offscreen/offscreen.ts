@@ -441,6 +441,26 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       sendResponse({ success: true });
       return true;
 
+    case 'OFFSCREEN_PARTICIPANT_RENAME':
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        sendResponse({ error: 'WebSocket is not connected. Please connect first.' });
+        return true;
+      }
+      if (!message.sessionId || !message.participantId || !message.speaker) {
+        sendResponse({ error: 'Invalid participant rename payload' });
+        return true;
+      }
+
+      sendMessage({
+        type: 'rename_participant',
+        sessionId: message.sessionId,
+        participantId: message.participantId,
+        speaker: message.speaker,
+      } as any);
+
+      sendResponse({ success: true });
+      return true;
+
     case 'OFFSCREEN_TRACK_AUDIO_CHUNK':
       if (!ws || ws.readyState !== WebSocket.OPEN) {
         sendResponse({ error: 'WebSocket is not connected. Please connect first.' });

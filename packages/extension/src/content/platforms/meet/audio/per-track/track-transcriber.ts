@@ -273,6 +273,17 @@ export class MeetTrackTranscriber {
           speaker: change.speaker,
         });
         capture.speaker = change.speaker;
+
+        chrome.runtime
+          .sendMessage({
+            type: 'PARTICIPANT_RENAME',
+            sessionId: this.sessionId,
+            participantId: capture.participantId,
+            speaker: change.speaker,
+          })
+          .catch(() => {
+            // service worker may be inactive momentarily
+          });
       }
     }, 250);
   }
