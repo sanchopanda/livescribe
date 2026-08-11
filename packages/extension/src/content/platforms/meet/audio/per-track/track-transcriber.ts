@@ -5,8 +5,10 @@ import {
   PreRollBuffer,
   type BufferedTrackChunk,
 } from '../../../../per-track/core/pre-roll';
-import { extractMeetSpeakerName } from '../../speaker/active-speaker-dom';
+import { extractMeetSpeakerName, getMeetActiveSpeaker } from '../../speaker/active-speaker-dom';
 import { resolveCaptureTargets, type MeetTrackOwner } from './capture-targets';
+import { TrackSpeakerBinding } from './speaker-binding';
+import { collectTrackEnergies, recordTrackEnergy, type TrackEnergySample } from './track-energy';
 
 interface MainWorldWebRTCTrackSnapshot {
   trackId: string;
@@ -172,6 +174,9 @@ export class MeetTrackTranscriber {
   private vadStateByTrackId = new Map<string, TrackVadState>();
   private lastLevelSentAtByTrackId = new Map<string, number>();
   private readonly preRoll = new PreRollBuffer();
+  private readonly binding = new TrackSpeakerBinding();
+  private readonly energyByTrackId = new Map<string, TrackEnergySample>();
+  private bindingTimerId: number | null = null;
 
   async start(sessionId: string): Promise<void> {
     if (this.running) {
@@ -241,6 +246,35 @@ export class MeetTrackTranscriber {
         summary,
       });
     }, 3000);
+
+    // Один такт в 250 мс — тот же ритм, что у опроса DOM-детектора в content.ts.
+    this.bindingTimerId = window.setInterval(() => {
+      if (!this.running || this.capturesByTrackId.size === 0) return;
+
+      const now = Date.now();
+      const trackIds = [...this.capturesByTrackId.keys()];
+      const localTrackIds = trackIds.filter(
+        (trackId) => this.capturesByTrackId.get(trackId)?.participantId === SELF_OWNER.participantId,
+      );
+
+      const changes = this.binding.observe({
+        tracks: collectTrackEnergies(this.energyByTrackId, trackIds, now),
+        localTrackIds,
+        domSpeaker: getMeetActiveSpeaker(),
+      });
+
+      for (const change of changes) {
+        const capture = this.capturesByTrackId.get(change.trackId);
+        if (!capture) continue;
+
+        debugLog('speaker bound', {
+          trackId: change.trackId,
+          participantId: capture.participantId,
+          speaker: change.speaker,
+        });
+        capture.speaker = change.speaker;
+      }
+    }, 250);
   }
 
   async stop(): Promise<void> {
@@ -261,6 +295,11 @@ export class MeetTrackTranscriber {
     if (this.chunkStatsTimerId !== null) {
       clearInterval(this.chunkStatsTimerId);
       this.chunkStatsTimerId = null;
+    }
+
+    if (this.bindingTimerId !== null) {
+      clearInterval(this.bindingTimerId);
+      this.bindingTimerId = null;
     }
 
     for (const [trackId, capture] of this.capturesByTrackId) {
@@ -290,6 +329,8 @@ export class MeetTrackTranscriber {
     this.vadStateByTrackId.clear();
     this.lastLevelSentAtByTrackId.clear();
     this.preRoll.clear();
+    this.binding.reset();
+    this.energyByTrackId.clear();
     this.lastMainWorldSnapshotSignature = null;
   }
 
@@ -546,6 +587,11 @@ export class MeetTrackTranscriber {
   ): void {
     const signal = analyzeChunkSignal(chunk);
     const now = Date.now();
+    recordTrackEnergy(this.energyByTrackId, trackId, signal.rms, now);
+
+    // Speaker binding overrides the DOM-tile-derived name once it has confirmed one for this
+    // track; participantId never changes, only which name rides along with the audio.
+    const boundSpeaker = this.binding.speakerFor(trackId) ?? speaker;
 
     const lastLevelSentAt = this.lastLevelSentAtByTrackId.get(trackId) ?? 0;
     if (now - lastLevelSentAt >= AUDIO_LEVEL_SEND_INTERVAL_MS) {
@@ -554,7 +600,7 @@ export class MeetTrackTranscriber {
         .sendMessage({
           type: 'TRACK_AUDIO_LEVEL',
           participantId,
-          speaker,
+          speaker: boundSpeaker,
           rms: signal.rms,
           peak: signal.peak,
           timestamp: now,
@@ -647,11 +693,11 @@ export class MeetTrackTranscriber {
           preRollMs: PRE_ROLL_MS,
         });
         preRollChunks.forEach((preRollChunk) => {
-          this.sendPcmChunkToOffscreen(preRollChunk.chunk, participantId, speaker);
+          this.sendPcmChunkToOffscreen(preRollChunk.chunk, participantId, boundSpeaker);
         });
       }
     }
 
-    this.sendPcmChunkToOffscreen(chunk, participantId, speaker);
+    this.sendPcmChunkToOffscreen(chunk, participantId, boundSpeaker);
   }
 }
