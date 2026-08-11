@@ -6,11 +6,7 @@ import {
   type BufferedTrackChunk,
 } from '../../../../per-track/core/pre-roll';
 import { extractMeetSpeakerName } from '../../speaker/active-speaker-dom';
-
-interface MeetTrackOwner {
-  participantId: string;
-  speaker: string | null;
-}
+import { resolveCaptureTargets, type MeetTrackOwner } from './capture-targets';
 
 interface MainWorldWebRTCTrackSnapshot {
   trackId: string;
@@ -354,25 +350,44 @@ export class MeetTrackTranscriber {
       }
     }
 
-    for (const [trackId, owner] of this.ownerByTrackId) {
+    const targets = resolveCaptureTargets(this.collectRegistryTrackIds(), this.ownerByTrackId);
+
+    for (const target of targets) {
+      const { trackId, participantId, speaker } = target;
       if (this.capturesByTrackId.has(trackId)) continue;
 
       const track = this.findAudioTrackById(trackId);
       if (!track) {
         if (!this.missingTrackLogged.has(trackId)) {
           this.missingTrackLogged.add(trackId);
-          console.warn('[LiveScribe][Meet][TrackTranscriber] mapped owner but track not found', {
+          console.warn('[LiveScribe][Meet][TrackTranscriber] registry track not found', {
             trackId,
-            participantId: owner.participantId,
-            speaker: owner.speaker,
+            participantId,
+            speaker,
           });
         }
         continue;
       }
 
       this.missingTrackLogged.delete(trackId);
-      await this.startTrackCapture(track, owner);
+      await this.startTrackCapture(track, { participantId, speaker });
     }
+  }
+
+  /** Every audio track the MAIN-world hook registered, named or not. */
+  private collectRegistryTrackIds(): string[] {
+    const trackIds: string[] = [];
+
+    document.querySelectorAll<HTMLMediaElement>(WEBRTC_REGISTRY_SELECTOR).forEach((mediaEl) => {
+      const stream = mediaEl.srcObject;
+      if (!(stream instanceof MediaStream)) return;
+
+      stream.getAudioTracks().forEach((track) => {
+        if (track.id) trackIds.push(track.id);
+      });
+    });
+
+    return trackIds;
   }
 
   private logTrackMapIfChanged(): void {
