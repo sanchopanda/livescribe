@@ -1,0 +1,165 @@
+import { describe, expect, it } from 'vitest';
+import { TrackSpeakerBinding } from './speaker-binding';
+
+const SERGEY = { participantId: 'spaces/Z2eZuCUpKwIB/devices/555', speaker: 'Сергей Чумеров' };
+const DANIIL = { participantId: 'spaces/Z2eZuCUpKwIB/devices/556', speaker: 'Даниил Никишкин' };
+const TRACK_A = '33f1a44f-0d1e-4af0-a9c6-bba5b1d58b73';
+const TRACK_B = 'd5c1572e-9cfa-43eb-ae4c-b9c23b398f88';
+const LOCAL = 'a1b2c3d4-0000-4000-8000-000000000000';
+
+/** RMS 0.09 — уровень говорящего участника из снимка живого звонка; 0.0000 — пустой слот Meet. */
+const LOUD = 0.09;
+const SILENT = 0;
+
+describe('TrackSpeakerBinding', () => {
+  it('связывает дорожку с участником после трёх согласных наблюдений', () => {
+    const binding = new TrackSpeakerBinding();
+    const observation = {
+      tracks: [
+        { trackId: TRACK_A, rms: LOUD },
+        { trackId: TRACK_B, rms: SILENT },
+      ],
+      domSpeaker: SERGEY,
+    };
+
+    expect(binding.observe(observation)).toEqual([]);
+    expect(binding.observe(observation)).toEqual([]);
+    expect(binding.observe(observation)).toEqual([
+      { trackId: TRACK_A, participantId: SERGEY.participantId, speaker: SERGEY.speaker },
+    ]);
+    expect(binding.speakerFor(TRACK_A)).toBe(SERGEY.speaker);
+  });
+
+  it('сообщает о привязке один раз, а не на каждом такте', () => {
+    const binding = new TrackSpeakerBinding();
+    const observation = { tracks: [{ trackId: TRACK_A, rms: LOUD }], domSpeaker: SERGEY };
+
+    binding.observe(observation);
+    binding.observe(observation);
+    binding.observe(observation);
+    expect(binding.observe(observation)).toEqual([]);
+  });
+
+  it('не связывает, когда звучат две дорожки сразу', () => {
+    // Момент перебивания: подсветка укажет одного, а дорожек с речью две — из такого наблюдения
+    // нельзя понять, какая из них его. Это и есть класс дефекта LS-28, который память чинит.
+    const binding = new TrackSpeakerBinding();
+    const observation = {
+      tracks: [
+        { trackId: TRACK_A, rms: LOUD },
+        { trackId: TRACK_B, rms: LOUD },
+      ],
+      domSpeaker: SERGEY,
+    };
+
+    binding.observe(observation);
+    binding.observe(observation);
+    binding.observe(observation);
+    expect(binding.speakerFor(TRACK_A)).toBeNull();
+  });
+
+  it('не связывает, когда подсветка молчит или имя не прочитано', () => {
+    const binding = new TrackSpeakerBinding();
+    const tracks = [{ trackId: TRACK_A, rms: LOUD }];
+
+    binding.observe({ tracks, domSpeaker: null });
+    binding.observe({ tracks, domSpeaker: { participantId: SERGEY.participantId, speaker: null } });
+    binding.observe({ tracks, domSpeaker: null });
+    expect(binding.speakerFor(TRACK_A)).toBeNull();
+  });
+
+  it('не считает локальную дорожку конкурентом', () => {
+    // Своя речь звучит одновременно с чужой постоянно. Если её учитывать, наблюдение перестаёт
+    // быть «чистым» и привязка остальных не набирается никогда.
+    const binding = new TrackSpeakerBinding();
+    const observation = {
+      tracks: [
+        { trackId: TRACK_A, rms: LOUD },
+        { trackId: LOCAL, rms: LOUD },
+      ],
+      localTrackIds: [LOCAL],
+      domSpeaker: SERGEY,
+    };
+
+    binding.observe(observation);
+    binding.observe(observation);
+    expect(binding.observe(observation)).toEqual([
+      { trackId: TRACK_A, participantId: SERGEY.participantId, speaker: SERGEY.speaker },
+    ]);
+  });
+
+  it('исключает замьюченного участника из кандидатов', () => {
+    const binding = new TrackSpeakerBinding();
+    const observation = {
+      tracks: [{ trackId: TRACK_A, rms: LOUD }],
+      domSpeaker: SERGEY,
+      mutedParticipantIds: [SERGEY.participantId],
+    };
+
+    binding.observe(observation);
+    binding.observe(observation);
+    binding.observe(observation);
+    expect(binding.speakerFor(TRACK_A)).toBeNull();
+  });
+
+  it('обнуляет счётчик согласий при несогласном наблюдении', () => {
+    const binding = new TrackSpeakerBinding();
+    const withSergey = { tracks: [{ trackId: TRACK_A, rms: LOUD }], domSpeaker: SERGEY };
+    const withDaniil = { tracks: [{ trackId: TRACK_A, rms: LOUD }], domSpeaker: DANIIL };
+
+    binding.observe(withSergey);
+    binding.observe(withSergey);
+    binding.observe(withDaniil);
+    binding.observe(withSergey);
+    expect(binding.speakerFor(TRACK_A)).toBeNull();
+  });
+
+  it('перевязывает дорожку, когда Meet отдал слот другому участнику', () => {
+    // Слотов больше, чем участников (наблюдали 4 на 3), и Meet их переиспользует.
+    const binding = new TrackSpeakerBinding();
+    const withSergey = { tracks: [{ trackId: TRACK_A, rms: LOUD }], domSpeaker: SERGEY };
+    const withDaniil = { tracks: [{ trackId: TRACK_A, rms: LOUD }], domSpeaker: DANIIL };
+
+    binding.observe(withSergey);
+    binding.observe(withSergey);
+    binding.observe(withSergey);
+
+    binding.observe(withDaniil);
+    binding.observe(withDaniil);
+    expect(binding.speakerFor(TRACK_A)).toBe(SERGEY.speaker);
+
+    expect(binding.observe(withDaniil)).toEqual([
+      { trackId: TRACK_A, participantId: DANIIL.participantId, speaker: DANIIL.speaker },
+    ]);
+    expect(binding.speakerFor(TRACK_A)).toBe(DANIIL.speaker);
+  });
+
+  it('держит одного участника ровно на одной дорожке', () => {
+    const binding = new TrackSpeakerBinding();
+    const onA = { tracks: [{ trackId: TRACK_A, rms: LOUD }], domSpeaker: SERGEY };
+    const onB = { tracks: [{ trackId: TRACK_B, rms: LOUD }], domSpeaker: SERGEY };
+
+    binding.observe(onA);
+    binding.observe(onA);
+    binding.observe(onA);
+
+    binding.observe(onB);
+    binding.observe(onB);
+    binding.observe(onB);
+
+    expect(binding.speakerFor(TRACK_B)).toBe(SERGEY.speaker);
+    expect(binding.speakerFor(TRACK_A)).toBeNull();
+  });
+
+  it('reset забывает всё — новый звонок начинается с чистого листа', () => {
+    const binding = new TrackSpeakerBinding();
+    const observation = { tracks: [{ trackId: TRACK_A, rms: LOUD }], domSpeaker: SERGEY };
+
+    binding.observe(observation);
+    binding.observe(observation);
+    binding.observe(observation);
+    binding.reset();
+
+    expect(binding.speakerFor(TRACK_A)).toBeNull();
+  });
+});
