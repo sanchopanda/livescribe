@@ -269,10 +269,12 @@ interface Confirmed {
   participantId: string;
   speaker: string;
   /**
-   * Disagreements counted per participant, not as one number. Three noisy reads naming three
-   * different people are not evidence that any one of them owns the slot.
+   * Disagreements are a streak owned by one participant, not a running total. Three noisy reads
+   * naming three different people are not evidence that any one of them owns the slot, so a new
+   * name interrupts the streak and starts it over.
    */
-  missesByParticipantId: Map<string, number>;
+  misses: number;
+  lastDisagreeingParticipantId?: string;
 }
 
 export class TrackSpeakerBinding {
@@ -294,14 +296,16 @@ export class TrackSpeakerBinding {
     const confirmed = this.confirmedByTrackId.get(trackId);
 
     if (confirmed && confirmed.participantId === speaker.participantId) {
-      confirmed.missesByParticipantId.clear();
+      confirmed.misses = 0;
+      confirmed.lastDisagreeingParticipantId = undefined;
       return [];
     }
 
     if (confirmed) {
-      const misses = (confirmed.missesByParticipantId.get(speaker.participantId) ?? 0) + 1;
-      confirmed.missesByParticipantId.set(speaker.participantId, misses);
-      if (misses < RESET_MISSES) return [];
+      confirmed.misses =
+        confirmed.lastDisagreeingParticipantId === speaker.participantId ? confirmed.misses + 1 : 1;
+      confirmed.lastDisagreeingParticipantId = speaker.participantId;
+      if (confirmed.misses < RESET_MISSES) return [];
 
       // Slot moved: drop the stale name and let the new one be earned from scratch. The misses
       // themselves are not evidence for the newcomer — they may have named different people.
@@ -329,7 +333,7 @@ export class TrackSpeakerBinding {
     this.confirmedByTrackId.set(trackId, {
       participantId: speaker.participantId,
       speaker: speaker.speaker,
-      missesByParticipantId: new Map(),
+      misses: 0,
     });
 
     return [{ trackId, participantId: speaker.participantId, speaker: speaker.speaker }];
