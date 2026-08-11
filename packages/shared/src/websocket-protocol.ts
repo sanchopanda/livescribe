@@ -18,6 +18,18 @@ export interface SpeakerUpdateMessage {
   timestamp?: number;
 }
 
+/**
+ * A per-track speaker was identified after the fact. Everything already recorded under the
+ * placeholder label belongs to this participant too, so the server relabels it — otherwise the
+ * opening minute of every call stays anonymous.
+ */
+export interface RenameParticipantMessage {
+  type: 'rename_participant';
+  sessionId: string;
+  participantId: string;
+  speaker: string;
+}
+
 export interface StartSessionMessage {
   type: 'start';
   language: 'ru-RU' | 'en-US';
@@ -40,6 +52,7 @@ export interface StopSessionMessage {
 export type ClientMessage =
   | AudioChunkMessage
   | SpeakerUpdateMessage
+  | RenameParticipantMessage
   | StartSessionMessage
   | StopSessionMessage;
 
@@ -104,9 +117,18 @@ export interface SttStatusMessage {
   state: 'ok' | 'reconnecting' | 'failed';
 }
 
+/** Relabelling done: the client rewrites the replicas it already displayed. */
+export interface ParticipantRenamedMessage {
+  type: 'participant_renamed';
+  participantId: string;
+  speaker: string;
+  previousSpeaker: string;
+}
+
 export type ServerMessage =
   | StatusMessage
   | ErrorMessage
   | PartialTranscriptMessage
   | FinalTranscriptMessage
-  | SttStatusMessage;
+  | SttStatusMessage
+  | ParticipantRenamedMessage;
