@@ -717,23 +717,29 @@ Expected: FAIL — `buildParticipantRenamePlan is not a function`.
 
 ```ts
 /**
- * Which stored segments a late-arriving speaker name applies to. Segments carry only the label,
- * not the participant id, and the placeholder label is unique per track inside a meeting — so the
- * old label is the selector.
+ * Which stored segments a late-arriving speaker name applies to.
+ *
+ * Only the placeholder label is a safe selector. Segments carry the label and not the participant
+ * id, and a real name can belong to segments from another track or another period of the call — a
+ * second rename of the same stream key (Meet moved the audio slot to someone else) would otherwise
+ * relabel a live person's genuine speech as the newcomer, unrecoverably.
  */
 export function buildParticipantRenamePlan(input: {
   meetingId: string | null | undefined;
   previousSpeaker: string | undefined;
   nextSpeaker: string;
-}): { meetingId: string; previousSpeaker: string; nextSpeaker: string } | null {
-  const meetingId = input.meetingId;
+  placeholderSpeaker: string;
+}): { meetingId: string | null; previousSpeaker: string; nextSpeaker: string } | null {
   const previousSpeaker = input.previousSpeaker?.trim();
   const nextSpeaker = input.nextSpeaker.trim();
+  const placeholderSpeaker = input.placeholderSpeaker.trim();
 
-  if (!meetingId || !previousSpeaker || !nextSpeaker) return null;
+  if (!previousSpeaker || !nextSpeaker) return null;
   if (previousSpeaker === nextSpeaker) return null;
+  if (previousSpeaker !== placeholderSpeaker) return null;
 
-  return { meetingId, previousSpeaker, nextSpeaker };
+  // An anonymous session has nothing stored to fix, but the widget still shows the placeholder.
+  return { meetingId: input.meetingId ?? null, previousSpeaker, nextSpeaker };
 }
 ```
 
@@ -755,11 +761,12 @@ Expected: PASS, 5 тестов.
 
             const participantId = message.participantId;
             const participantEntry = participantProviders.get(participantId);
-            const previousSpeaker =
-              participantEntry?.speaker ?? formatParticipantFallback(participantId);
+            const placeholderSpeaker = formatParticipantFallback(participantId);
+            const previousSpeaker = participantEntry?.speaker ?? placeholderSpeaker;
             const nextSpeaker = normalizeSpeakerLabel(message.speaker);
             if (!nextSpeaker) return;
 
+            // Always: future finals of this stream carry the new name, whichever case this is.
             if (participantEntry) {
               participantEntry.speaker = nextSpeaker;
             }
@@ -768,9 +775,10 @@ Expected: PASS, 5 тестов.
               meetingId: session.meetingId,
               previousSpeaker,
               nextSpeaker,
+              placeholderSpeaker,
             });
 
-            if (plan) {
+            if (plan?.meetingId) {
               await prisma.transcriptSegment
                 .updateMany({
                   where: { meetingId: plan.meetingId, speaker: plan.previousSpeaker },
@@ -784,18 +792,23 @@ Expected: PASS, 5 тестов.
                 );
             }
 
-            const renamed: ServerMessage = {
-              type: 'participant_renamed',
-              participantId,
-              speaker: nextSpeaker,
-              previousSpeaker,
-            };
-            connection.send(JSON.stringify(renamed));
-
-            server.log.info(
-              { conn, sessionId, participantId, previousSpeaker, speaker: nextSpeaker },
-              'Participant renamed',
-            );
+            // Only a placeholder rename may reach the widget: telling it to rewrite a real name
+            // would corrupt the displayed transcript exactly as the UPDATE would corrupt the stored
+            // one. A slot handoff is forward-only — and worth a log line, not silence.
+            if (plan) {
+              const renamed: ServerMessage = {
+                type: 'participant_renamed',
+                participantId,
+                speaker: nextSpeaker,
+                previousSpeaker: plan.previousSpeaker,
+              };
+              connection.send(JSON.stringify(renamed));
+            } else {
+              server.log.info(
+                { conn, sessionId, participantId, previousSpeaker, speaker: nextSpeaker },
+                'Participant renamed forward-only (audio slot moved)',
+              );
+            }
             break;
           }
 ```
