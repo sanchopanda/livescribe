@@ -5,7 +5,7 @@ import {
   PreRollBuffer,
   type BufferedTrackChunk,
 } from '../../../../per-track/core/pre-roll';
-import { extractMeetSpeakerName, getMeetActiveSpeaker } from '../../speaker/active-speaker-dom';
+import { collectMutedMeetParticipantIds, extractMeetSpeakerName, getMeetActiveSpeaker } from '../../speaker/active-speaker-dom';
 import { resolveCaptureTargets, type MeetTrackOwner } from './capture-targets';
 import { TrackSpeakerBinding } from './speaker-binding';
 import { collectTrackEnergies, recordTrackEnergy, type TrackEnergySample } from './track-energy';
@@ -261,6 +261,7 @@ export class MeetTrackTranscriber {
         tracks: collectTrackEnergies(this.energyByTrackId, trackIds, now),
         localTrackIds,
         domSpeaker: getMeetActiveSpeaker(),
+        mutedParticipantIds: collectMutedMeetParticipantIds(),
       });
 
       for (const change of changes) {

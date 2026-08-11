@@ -3,6 +3,11 @@ export interface MeetSpeakerInfo {
   speaker: string | null;
 }
 
+/** Meet renders the tile mic state as a material icon name inside the button. */
+export function isMutedMicIcon(iconText: string | null | undefined): boolean {
+  return iconText?.trim() === 'mic_off';
+}
+
 /**
  * The class Meet puts on an idle audio-bars element. A speaking participant carries a level class
  * in its place (`Oaajhc`, `HX2H7`, … — the value tracks loudness), never this one.
@@ -103,4 +108,27 @@ export function getMeetActiveSpeaker(): MeetSpeakerInfo | null {
   const speaker = extractMeetSpeakerName(activeTile);
 
   return { participantId, speaker };
+}
+
+/**
+ * Participants whose microphone is off. They cannot be the source of any audio, so binding must
+ * not consider them candidates even if the highlight momentarily points at them.
+ */
+export function collectMutedMeetParticipantIds(): string[] {
+  const muted: string[] = [];
+
+  document.querySelectorAll<HTMLElement>('[data-participant-id]').forEach((tile) => {
+    const participantId = tile.getAttribute('data-participant-id');
+    if (!participantId) return;
+
+    const icons = tile.querySelectorAll<HTMLElement>('i.google-symbols');
+    for (const icon of icons) {
+      if (isMutedMicIcon(icon.textContent)) {
+        muted.push(participantId);
+        return;
+      }
+    }
+  });
+
+  return muted;
 }

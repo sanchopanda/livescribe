@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseMeetSpeakerName, pickActiveIndicatorIndex } from './active-speaker-dom';
+import { isMutedMicIcon, parseMeetSpeakerName, pickActiveIndicatorIndex } from './active-speaker-dom';
 
 // Class lists captured from a live 3-person Meet call on 2026-08-11, while Сергей was talking.
 // The self tile is the one that used to be picked: it carries a permanent extra class.
@@ -65,5 +65,24 @@ describe('parseMeetSpeakerName', () => {
     expect(parseMeetSpeakerName('')).toBeNull();
     expect(parseMeetSpeakerName(null)).toBeNull();
     expect(parseMeetSpeakerName('   ')).toBeNull();
+  });
+});
+
+describe('isMutedMicIcon', () => {
+  it('распознаёт выключенный микрофон', () => {
+    // Иконка внутри кнопки микрофона плитки: material-имя приходит текстом.
+    expect(isMutedMicIcon('mic_off')).toBe(true);
+  });
+
+  it('живой микрофон замьюченным не считает', () => {
+    expect(isMutedMicIcon('mic_none')).toBe(false);
+    expect(isMutedMicIcon('mic')).toBe(false);
+  });
+
+  it('на неизвестном значении не фильтрует', () => {
+    // Фильтр необязательный: сомнение не должно исключать участника из кандидатов.
+    expect(isMutedMicIcon(null)).toBe(false);
+    expect(isMutedMicIcon('')).toBe(false);
+    expect(isMutedMicIcon('keep_outline')).toBe(false);
   });
 });
