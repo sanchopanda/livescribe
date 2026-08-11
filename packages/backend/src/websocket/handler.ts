@@ -79,6 +79,28 @@ export function buildTranscriptSegmentRecord(
 }
 
 /**
+ * Which stored segments a late-arriving speaker name applies to. Segments carry only the label,
+ * not the participant id, and the placeholder label is unique per track inside a meeting — so the
+ * old label is the selector.
+ *
+ * Exported for tests.
+ */
+export function buildParticipantRenamePlan(input: {
+  meetingId: string | null | undefined;
+  previousSpeaker: string | undefined;
+  nextSpeaker: string;
+}): { meetingId: string; previousSpeaker: string; nextSpeaker: string } | null {
+  const meetingId = input.meetingId;
+  const previousSpeaker = input.previousSpeaker?.trim();
+  const nextSpeaker = input.nextSpeaker.trim();
+
+  if (!meetingId || !previousSpeaker || !nextSpeaker) return null;
+  if (previousSpeaker === nextSpeaker) return null;
+
+  return { meetingId, previousSpeaker, nextSpeaker };
+}
+
+/**
  * Whether a client-supplied `resumeMeetingId` may continue into this meeting.
  *
  * The id comes off the wire, so ownership decides — a token must never be able to append
@@ -649,6 +671,58 @@ export function registerWebSocketHandler(server: FastifyInstance) {
               participantId: (message as any).participantId,
             });
             server.log.info({ conn, sessionId, speaker: session.speaker }, 'Speaker update received');
+            break;
+          }
+
+          case 'rename_participant': {
+            if (!sessionId) return;
+
+            const session = sessionManager.getSession(sessionId);
+            if (!session) return;
+
+            const participantId = message.participantId;
+            const participantEntry = participantProviders.get(participantId);
+            const previousSpeaker =
+              participantEntry?.speaker ?? formatParticipantFallback(participantId);
+            const nextSpeaker = normalizeSpeakerLabel(message.speaker);
+            if (!nextSpeaker) return;
+
+            if (participantEntry) {
+              participantEntry.speaker = nextSpeaker;
+            }
+
+            const plan = buildParticipantRenamePlan({
+              meetingId: session.meetingId,
+              previousSpeaker,
+              nextSpeaker,
+            });
+
+            if (plan) {
+              await prisma.transcriptSegment
+                .updateMany({
+                  where: { meetingId: plan.meetingId, speaker: plan.previousSpeaker },
+                  data: { speaker: plan.nextSpeaker },
+                })
+                .catch((err: Error) =>
+                  server.log.warn(
+                    { conn, sessionId, error: err.message },
+                    'Failed to rename transcript segments',
+                  ),
+                );
+            }
+
+            const renamed: ServerMessage = {
+              type: 'participant_renamed',
+              participantId,
+              speaker: nextSpeaker,
+              previousSpeaker,
+            };
+            connection.send(JSON.stringify(renamed));
+
+            server.log.info(
+              { conn, sessionId, participantId, previousSpeaker, speaker: nextSpeaker },
+              'Participant renamed',
+            );
             break;
           }
 
