@@ -80,8 +80,14 @@ export function buildTranscriptSegmentRecord(
 
 /**
  * Which stored segments a late-arriving speaker name applies to. Segments carry only the label,
- * not the participant id, and the placeholder label is unique per track inside a meeting — so the
- * old label is the selector.
+ * not the participant id, so the old label is the only selector available for a bulk rename —
+ * but only the placeholder label is safe to use that way. It is unique per track inside a
+ * meeting, so backfilling rows still under it can only touch that one track's own segments.
+ * A real name carries no such guarantee: Meet reuses audio slots, so the same `participantId`
+ * can be rebound to a different person mid-call, and its previous occupant's real name may
+ * already label segments from another track or another period of the same call. Renaming by a
+ * real name would silently relabel someone else's genuine speech — so a rename is only ever
+ * applied to the database when it is replacing the placeholder.
  *
  * Exported for tests.
  */
@@ -89,13 +95,18 @@ export function buildParticipantRenamePlan(input: {
   meetingId: string | null | undefined;
   previousSpeaker: string | undefined;
   nextSpeaker: string;
-}): { meetingId: string; previousSpeaker: string; nextSpeaker: string } | null {
-  const meetingId = input.meetingId;
+  placeholderSpeaker: string;
+}): { meetingId: string | null; previousSpeaker: string; nextSpeaker: string } | null {
   const previousSpeaker = input.previousSpeaker?.trim();
   const nextSpeaker = input.nextSpeaker.trim();
+  const placeholderSpeaker = input.placeholderSpeaker.trim();
 
-  if (!meetingId || !previousSpeaker || !nextSpeaker) return null;
+  if (!previousSpeaker || !nextSpeaker) return null;
   if (previousSpeaker === nextSpeaker) return null;
+  // Only a placeholder rename may backfill stored rows — see the note above.
+  if (previousSpeaker !== placeholderSpeaker) return null;
+
+  const meetingId = input.meetingId ?? null;
 
   return { meetingId, previousSpeaker, nextSpeaker };
 }
@@ -682,11 +693,14 @@ export function registerWebSocketHandler(server: FastifyInstance) {
 
             const participantId = message.participantId;
             const participantEntry = participantProviders.get(participantId);
+            const placeholderSpeaker = formatParticipantFallback(participantId);
             const previousSpeaker =
-              participantEntry?.speaker ?? formatParticipantFallback(participantId);
+              participantEntry?.speaker ?? placeholderSpeaker;
             const nextSpeaker = normalizeSpeakerLabel(message.speaker);
             if (!nextSpeaker) return;
 
+            // Update the in-memory label unconditionally in both cases (placeholder backfill or
+            // slot handoff) — future finals of this stream must carry the new name either way.
             if (participantEntry) {
               participantEntry.speaker = nextSpeaker;
             }
@@ -695,34 +709,46 @@ export function registerWebSocketHandler(server: FastifyInstance) {
               meetingId: session.meetingId,
               previousSpeaker,
               nextSpeaker,
+              placeholderSpeaker,
             });
 
             if (plan) {
-              await prisma.transcriptSegment
-                .updateMany({
-                  where: { meetingId: plan.meetingId, speaker: plan.previousSpeaker },
-                  data: { speaker: plan.nextSpeaker },
-                })
-                .catch((err: Error) =>
-                  server.log.warn(
-                    { conn, sessionId, error: err.message },
-                    'Failed to rename transcript segments',
-                  ),
-                );
+              if (plan.meetingId) {
+                await prisma.transcriptSegment
+                  .updateMany({
+                    where: { meetingId: plan.meetingId, speaker: plan.previousSpeaker },
+                    data: { speaker: plan.nextSpeaker },
+                  })
+                  .catch((err: Error) =>
+                    server.log.warn(
+                      { conn, sessionId, error: err.message },
+                      'Failed to rename transcript segments',
+                    ),
+                  );
+              }
+
+              const renamed: ServerMessage = {
+                type: 'participant_renamed',
+                participantId,
+                speaker: nextSpeaker,
+                previousSpeaker,
+              };
+              connection.send(JSON.stringify(renamed));
+
+              server.log.info(
+                { conn, sessionId, participantId, previousSpeaker, speaker: nextSpeaker },
+                'Participant renamed',
+              );
+            } else {
+              // Not a placeholder backfill: previousSpeaker was a real name, so Meet handed this
+              // track's slot to someone else. Nothing stored may be touched, and the client must
+              // not relabel what it is already displaying under the previous name — but the
+              // handoff itself is worth a log line instead of vanishing silently.
+              server.log.info(
+                { conn, sessionId, participantId, previousSpeaker, speaker: nextSpeaker },
+                'Participant slot handed off; stored segments left untouched',
+              );
             }
-
-            const renamed: ServerMessage = {
-              type: 'participant_renamed',
-              participantId,
-              speaker: nextSpeaker,
-              previousSpeaker,
-            };
-            connection.send(JSON.stringify(renamed));
-
-            server.log.info(
-              { conn, sessionId, participantId, previousSpeaker, speaker: nextSpeaker },
-              'Participant renamed',
-            );
             break;
           }
 
