@@ -6,6 +6,7 @@ import { RecordingController } from './recording/recording-controller';
 import { researchPanelHtml, setupResearchPanel } from './research/research-panel';
 import { AUTO_SHOW_WIDGET_KEY, getAutoShowWidget } from '../settings/widget-settings';
 import { nextBannerState, type SttBannerKind, type SttStatusState } from './stt-status-banner';
+import { renameReplicaSpeaker } from './transcript-rename';
 
 declare const __DEV_TOOLS__: boolean;
 
@@ -1564,6 +1565,20 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       trackModeController.ensureStarted('ws:status');
     } else if (wsMessage.type === 'stt_status') {
       applySttStatus(wsMessage.state);
+    } else if (wsMessage.type === 'participant_renamed') {
+      // Backend only sends this for a placeholder→real-name rename, so rewriting
+      // whatever is already on screen is always safe.
+      const previous = String((wsMessage as any).previousSpeaker ?? '');
+      const next = String((wsMessage as any).speaker ?? '');
+
+      transcriptReplicas = renameReplicaSpeaker(transcriptReplicas, previous, next);
+      if (partialReplica) {
+        partialReplica = renameReplicaSpeaker([partialReplica], previous, next)[0];
+      }
+      if (currentSpeaker === previous) {
+        currentSpeaker = next;
+      }
+      updateTranscript();
     }
     return false;
   }
