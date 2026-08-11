@@ -41,6 +41,7 @@ import { TrackSpeakerBinding } from './speaker-binding';
 
 const SERGEY = { participantId: 'spaces/Z2eZuCUpKwIB/devices/555', speaker: 'Сергей Чумеров' };
 const DANIIL = { participantId: 'spaces/Z2eZuCUpKwIB/devices/556', speaker: 'Даниил Никишкин' };
+const ANNA = { participantId: 'spaces/Z2eZuCUpKwIB/devices/558', speaker: 'Анна Петрова' };
 const TRACK_A = '33f1a44f-0d1e-4af0-a9c6-bba5b1d58b73';
 const TRACK_B = 'd5c1572e-9cfa-43eb-ae4c-b9c23b398f88';
 const LOCAL = 'a1b2c3d4-0000-4000-8000-000000000000';
@@ -153,7 +154,8 @@ describe('TrackSpeakerBinding', () => {
   });
 
   it('перевязывает дорожку, когда Meet отдал слот другому участнику', () => {
-    // Слотов больше, чем участников (наблюдали 4 на 3), и Meet их переиспользует.
+    // Слотов больше, чем участников (наблюдали 4 на 3), и Meet их переиспользует. Сброс не
+    // подтверждает нового участника сам: имя он получает обычными тремя согласными наблюдениями.
     const binding = new TrackSpeakerBinding();
     const withSergey = { tracks: [{ trackId: TRACK_A, rms: LOUD }], domSpeaker: SERGEY };
     const withDaniil = { tracks: [{ trackId: TRACK_A, rms: LOUD }], domSpeaker: DANIIL };
@@ -162,14 +164,34 @@ describe('TrackSpeakerBinding', () => {
     binding.observe(withSergey);
     binding.observe(withSergey);
 
-    binding.observe(withDaniil);
-    binding.observe(withDaniil);
-    expect(binding.speakerFor(TRACK_A)).toBe(SERGEY.speaker);
+    expect(binding.observe(withDaniil)).toEqual([]);
+    expect(binding.observe(withDaniil)).toEqual([]);
+    expect(binding.observe(withDaniil)).toEqual([]);
+    expect(binding.speakerFor(TRACK_A)).toBeNull();
 
+    binding.observe(withDaniil);
+    binding.observe(withDaniil);
     expect(binding.observe(withDaniil)).toEqual([
       { trackId: TRACK_A, participantId: DANIIL.participantId, speaker: DANIIL.speaker },
     ]);
     expect(binding.speakerFor(TRACK_A)).toBe(DANIIL.speaker);
+  });
+
+  it('не сбрасывает привязку от шумных чтений про разных участников', () => {
+    // Несогласия считаются по конкретному участнику: три подряд промаха, назвавшие троих разных
+    // людей, не складываются в сброс — иначе шум подписал бы реплику чужим именем.
+    const binding = new TrackSpeakerBinding();
+    const withSergey = { tracks: [{ trackId: TRACK_A, rms: LOUD }], domSpeaker: SERGEY };
+
+    binding.observe(withSergey);
+    binding.observe(withSergey);
+    binding.observe(withSergey);
+
+    binding.observe({ tracks: [{ trackId: TRACK_A, rms: LOUD }], domSpeaker: DANIIL });
+    binding.observe({ tracks: [{ trackId: TRACK_A, rms: LOUD }], domSpeaker: ANNA });
+    binding.observe({ tracks: [{ trackId: TRACK_A, rms: LOUD }], domSpeaker: DANIIL });
+
+    expect(binding.speakerFor(TRACK_A)).toBe(SERGEY.speaker);
   });
 
   it('держит одного участника ровно на одной дорожке', () => {
@@ -246,7 +268,11 @@ interface Candidate {
 interface Confirmed {
   participantId: string;
   speaker: string;
-  misses: number;
+  /**
+   * Disagreements counted per participant, not as one number. Three noisy reads naming three
+   * different people are not evidence that any one of them owns the slot.
+   */
+  missesByParticipantId: Map<string, number>;
 }
 
 export class TrackSpeakerBinding {
@@ -268,14 +294,20 @@ export class TrackSpeakerBinding {
     const confirmed = this.confirmedByTrackId.get(trackId);
 
     if (confirmed && confirmed.participantId === speaker.participantId) {
-      confirmed.misses = 0;
+      confirmed.missesByParticipantId.clear();
       return [];
     }
 
     if (confirmed) {
-      confirmed.misses += 1;
-      if (confirmed.misses < RESET_MISSES) return [];
+      const misses = (confirmed.missesByParticipantId.get(speaker.participantId) ?? 0) + 1;
+      confirmed.missesByParticipantId.set(speaker.participantId, misses);
+      if (misses < RESET_MISSES) return [];
+
+      // Slot moved: drop the stale name and let the new one be earned from scratch. The misses
+      // themselves are not evidence for the newcomer — they may have named different people.
       this.confirmedByTrackId.delete(trackId);
+      this.candidateByTrackId.delete(trackId);
+      return [];
     }
 
     const candidate = this.candidateByTrackId.get(trackId);
@@ -297,7 +329,7 @@ export class TrackSpeakerBinding {
     this.confirmedByTrackId.set(trackId, {
       participantId: speaker.participantId,
       speaker: speaker.speaker,
-      misses: 0,
+      missesByParticipantId: new Map(),
     });
 
     return [{ trackId, participantId: speaker.participantId, speaker: speaker.speaker }];
@@ -326,7 +358,7 @@ export class TrackSpeakerBinding {
 - [ ] **Step 4: Прогнать тесты**
 
 Run: `cd packages/extension && npx vitest run src/content/platforms/meet/audio/per-track/speaker-binding.test.ts`
-Expected: PASS, 10 тестов.
+Expected: PASS, 11 тестов.
 
 - [ ] **Step 5: Коммит**
 
