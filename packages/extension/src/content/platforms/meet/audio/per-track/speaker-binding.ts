@@ -10,7 +10,6 @@ export interface BindingObservation {
   /** Own microphone: it talks over everyone and must not spoil an otherwise clean observation. */
   localTrackIds?: readonly string[];
   domSpeaker: { participantId: string; speaker: string | null } | null;
-  mutedParticipantIds?: readonly string[];
 }
 
 export interface BindingChange {
@@ -33,6 +32,9 @@ interface Candidate {
 interface Confirmed {
   participantId: string;
   speaker: string;
+  // A miss streak belongs to exactly one challenger: three noisy reads naming three different
+  // people are not evidence that any one of them owns the slot, so only consecutive misses from
+  // the *same* participant may accumulate toward dropping the binding.
   lastDisagreeingParticipantId?: string;
   misses: number;
 }
@@ -44,9 +46,20 @@ export class TrackSpeakerBinding {
   observe(observation: BindingObservation): BindingChange[] {
     const speaker = observation.domSpeaker;
     if (!speaker?.speaker) return [];
-    if (observation.mutedParticipantIds?.includes(speaker.participantId)) return [];
 
     const localTrackIds = observation.localTrackIds ?? [];
+
+    // The self tile is non-idle exactly when the recorder is speaking, so the tile highlight
+    // cannot be trusted to point at a remote participant while the local mic is loud: the owner
+    // talking over a remote participant would otherwise look like a clean, single-track
+    // observation and confirm the remote track under the OWNER's name. A wrong binding here
+    // writes an unrecoverable relabel into stored transcript segments, so the whole observation
+    // is discarded before any counting — not just the local track excluded from it.
+    const localIsLoud = observation.tracks.some(
+      (track) => localTrackIds.includes(track.trackId) && track.rms >= VAD_DEFAULTS.rmsOn,
+    );
+    if (localIsLoud) return [];
+
     const active = observation.tracks.filter(
       (track) => !localTrackIds.includes(track.trackId) && track.rms >= VAD_DEFAULTS.rmsOn,
     );

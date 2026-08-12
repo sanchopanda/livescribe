@@ -69,14 +69,14 @@ describe('TrackSpeakerBinding', () => {
     expect(binding.speakerFor(TRACK_A)).toBeNull();
   });
 
-  it('не считает локальную дорожку конкурентом', () => {
-    // Своя речь звучит одновременно с чужой постоянно. Если её учитывать, наблюдение перестаёт
-    // быть «чистым» и привязка остальных не набирается никогда.
+  it('локальная дорожка сама по себе не конкурент: молчащая — привязка остальных набирается', () => {
+    // The local track is never counted as a competing speaker — only whether it is loud matters
+    // (see the next test). With the local mic silent, a loud remote track still confirms normally.
     const binding = new TrackSpeakerBinding();
     const observation = {
       tracks: [
         { trackId: TRACK_A, rms: LOUD },
-        { trackId: LOCAL, rms: LOUD },
+        { trackId: LOCAL, rms: SILENT },
       ],
       localTrackIds: [LOCAL],
       domSpeaker: SERGEY,
@@ -89,12 +89,19 @@ describe('TrackSpeakerBinding', () => {
     ]);
   });
 
-  it('исключает замьюченного участника из кандидатов', () => {
+  it('владелец записи говорит поверх Сергея: наблюдение не набирается, пока локальная дорожка громкая', () => {
+    // Scenario: owner talking over Сергей. The self tile lights up whenever the recorder speaks,
+    // so a loud local mic makes the tile highlight untrustworthy even though only one *remote*
+    // track is above threshold — trusting it here would let the owner's speech steal the remote
+    // participant's track and irreversibly relabel their stored segments as the owner.
     const binding = new TrackSpeakerBinding();
     const observation = {
-      tracks: [{ trackId: TRACK_A, rms: LOUD }],
+      tracks: [
+        { trackId: TRACK_A, rms: LOUD },
+        { trackId: LOCAL, rms: LOUD },
+      ],
+      localTrackIds: [LOCAL],
       domSpeaker: SERGEY,
-      mutedParticipantIds: [SERGEY.participantId],
     };
 
     binding.observe(observation);
