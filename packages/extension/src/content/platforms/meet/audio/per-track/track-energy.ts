@@ -6,8 +6,10 @@ export interface TrackEnergySample {
 }
 
 /**
- * How long a level stays meaningful. A track that stopped sending chunks is silent, not loud
- * forever — VAD gates sending, so silence arrives as absence of data.
+ * How long a level stays meaningful. Energy is recorded from every chunk before the VAD gate
+ * runs, so silence does not arrive as absence of data — but a track that ended or went silent at
+ * the source stops producing chunks altogether, and its last recorded sample must not be read as
+ * still-loud forever once it goes stale.
  */
 export const ENERGY_FRESH_MS = 400;
 

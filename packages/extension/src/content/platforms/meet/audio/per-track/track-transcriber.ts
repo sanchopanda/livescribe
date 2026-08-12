@@ -177,6 +177,13 @@ export class MeetTrackTranscriber {
   private readonly binding = new TrackSpeakerBinding();
   private readonly energyByTrackId = new Map<string, TrackEnergySample>();
   private bindingTimerId: number | null = null;
+  /**
+   * What was actually delivered, per participant. `observe()` announces each confirmation
+   * exactly once, so if the send fails silently (offscreen drops it because the socket is not
+   * OPEN mid-reconnect) nothing else will ever retry — redelivery has to be driven off delivery
+   * outcome, not off the one-shot confirmation event.
+   */
+  private readonly sentRenameByParticipantId = new Map<string, string>();
 
   async start(sessionId: string): Promise<void> {
     if (this.running) {
@@ -274,18 +281,43 @@ export class MeetTrackTranscriber {
         });
         capture.speaker = change.speaker;
 
-        chrome.runtime
-          .sendMessage({
-            type: 'PARTICIPANT_RENAME',
-            sessionId: this.sessionId,
-            participantId: capture.participantId,
-            speaker: change.speaker,
-          })
-          .catch(() => {
-            // service worker may be inactive momentarily
-          });
+        void this.sendParticipantRename(capture.participantId, change.speaker);
+      }
+
+      // Redeliver any confirmed name that has not actually reached the backend yet — the first
+      // attempt may have failed (socket not OPEN, mid-reconnect) and observe() will not announce
+      // the same confirmation a second time, so this walk is the only thing that can retry it.
+      for (const capture of this.capturesByTrackId.values()) {
+        const speaker = this.binding.speakerFor(capture.trackId);
+        if (!speaker) continue;
+        if (this.sentRenameByParticipantId.get(capture.participantId) === speaker) continue;
+
+        void this.sendParticipantRename(capture.participantId, speaker);
       }
     }, 250);
+  }
+
+  /**
+   * Sends a confirmed name and records it as delivered only on genuine success. A rejected
+   * promise (service worker inactive) or a truthy `{ error }` reply (offscreen had no OPEN
+   * socket to send it over) both mean the backend never saw it, so the entry must stay unset —
+   * that is what makes the 250 ms tick's redelivery walk retry it.
+   */
+  private async sendParticipantRename(participantId: string, speaker: string): Promise<void> {
+    try {
+      const reply = await chrome.runtime.sendMessage({
+        type: 'PARTICIPANT_RENAME',
+        sessionId: this.sessionId,
+        participantId,
+        speaker,
+      });
+
+      if (reply && !(reply as { error?: unknown }).error) {
+        this.sentRenameByParticipantId.set(participantId, speaker);
+      }
+    } catch {
+      // Not delivered — service worker may be inactive momentarily; leave unset so it retries.
+    }
   }
 
   async stop(): Promise<void> {
@@ -342,6 +374,7 @@ export class MeetTrackTranscriber {
     this.preRoll.clear();
     this.binding.reset();
     this.energyByTrackId.clear();
+    this.sentRenameByParticipantId.clear();
     this.lastMainWorldSnapshotSignature = null;
   }
 
@@ -552,6 +585,9 @@ export class MeetTrackTranscriber {
       });
       this.capturesByTrackId.delete(track.id);
       this.preRoll.drop(track.id);
+      // Otherwise a stale sample from before the track ended keeps reading as loud in
+      // collectTrackEnergies (see ENERGY_FRESH_MS) until it happens to age out on its own.
+      this.energyByTrackId.delete(track.id);
     });
   }
 
@@ -629,7 +665,7 @@ export class MeetTrackTranscriber {
       console.log('[LiveScribe][Meet][TrackTranscriber] VAD opened', {
         trackId,
         participantId,
-        speaker,
+        speaker: boundSpeaker,
         rms: Number(signal.rms.toFixed(5)),
         peak: Number(signal.peak.toFixed(5)),
       });
@@ -639,7 +675,7 @@ export class MeetTrackTranscriber {
       console.log('[LiveScribe][Meet][TrackTranscriber] VAD closed', {
         trackId,
         participantId,
-        speaker,
+        speaker: boundSpeaker,
         rms: Number(signal.rms.toFixed(5)),
         peak: Number(signal.peak.toFixed(5)),
       });
