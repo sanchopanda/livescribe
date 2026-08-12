@@ -684,7 +684,7 @@ recordingController = new RecordingController({
   },
   getSelectedLanguage,
   getPlatformForStartMessage: () => platformAdapter.getPlatform(),
-  getAudioMode: () => platformAdapter.getAudioMode(),
+  getTranscriptSource: () => platformAdapter.getTranscriptSource(),
   shouldLogAudioMode: () => platformAdapter.supportsAudioModeSelection(),
   updateStatus,
   startSpeakerTracking,
@@ -814,7 +814,7 @@ function createUIWidget() {
   `;
 
   const selectedLanguage = getSelectedLanguage();
-  const selectedAudioMode = platformAdapter.getAudioMode();
+  const selectedAudioMode = platformAdapter.getTranscriptSource();
   const languageOptions = LANGUAGES.map(
     (lang) => `<option value="${lang.value}" ${lang.value === selectedLanguage ? 'selected' : ''}>${lang.label}</option>`
   ).join('');
@@ -1067,7 +1067,7 @@ function createUIWidget() {
   document.getElementById('livescribe-audio-mode')?.addEventListener('change', (e) => {
       const target = e.target as HTMLSelectElement;
       if (target.value === 'mixed' || target.value === 'per-track') {
-        platformAdapter.setAudioMode(target.value);
+        platformAdapter.setTranscriptSource(target.value);
         console.log('[LiveScribe] audio mode changed', {
           platform: platformAdapter.getPlatform(),
           mode: target.value,

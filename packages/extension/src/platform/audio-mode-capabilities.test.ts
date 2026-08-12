@@ -1,23 +1,51 @@
 import { describe, expect, it } from 'vitest';
-import { resolveAudioMode, supportsPerTrackAudioMode } from './audio-mode-capabilities';
+import {
+  requiresAudioCapture,
+  resolveTranscriptSource,
+  supportsCaptionTranscriptSource,
+} from './audio-mode-capabilities';
 
-describe('resolveAudioMode', () => {
-  it('keeps per-track platforms switchable', () => {
-    expect(resolveAudioMode('per-track', 'meet')).toBe('per-track');
-    expect(resolveAudioMode('mixed', 'meet')).toBe('mixed');
-    expect(resolveAudioMode(undefined, 'pachca')).toBe('per-track');
+describe('resolveTranscriptSource', () => {
+  it('оставляет субтитры там, где платформа их умеет', () => {
+    expect(resolveTranscriptSource('meet-captions', 'meet')).toBe('meet-captions');
   });
 
-  it('forces mixed where per-track does not exist', () => {
-    // Teams mixes audio server-side; Zoom has no per-track pipeline yet.
-    expect(supportsPerTrackAudioMode('teams')).toBe(false);
-    expect(resolveAudioMode(undefined, 'teams')).toBe('mixed');
-    expect(resolveAudioMode('per-track', 'teams')).toBe('mixed');
-    expect(resolveAudioMode('per-track', 'zoom')).toBe('mixed');
+  it('не отдаёт субтитры платформе без них', () => {
+    // Иначе виджет описывал бы пайплайн, которого на этой платформе не существует, — та же
+    // ошибка, что чинил LS-21 для per-track.
+    expect(resolveTranscriptSource('meet-captions', 'teams')).toBe('mixed');
+    expect(resolveTranscriptSource('meet-captions', 'zoom')).toBe('mixed');
+    expect(resolveTranscriptSource('meet-captions', undefined)).toBe('mixed');
   });
 
-  it('falls back to mixed for an unknown platform', () => {
-    expect(resolveAudioMode(undefined, undefined)).toBe('mixed');
-    expect(resolveAudioMode('per-track', undefined)).toBe('mixed');
+  it('платформа без per-track всегда mixed', () => {
+    expect(resolveTranscriptSource('per-track', 'teams')).toBe('mixed');
+    expect(resolveTranscriptSource(undefined, 'zoom')).toBe('mixed');
+  });
+
+  it('по умолчанию per-track там, где он есть', () => {
+    expect(resolveTranscriptSource(undefined, 'meet')).toBe('per-track');
+    expect(resolveTranscriptSource('mixed', 'meet')).toBe('mixed');
+  });
+});
+
+describe('requiresAudioCapture', () => {
+  it('субтитры не требуют захвата аудио', () => {
+    expect(requiresAudioCapture('meet-captions')).toBe(false);
+  });
+
+  it('аудио-режимы требуют захвата', () => {
+    expect(requiresAudioCapture('mixed')).toBe(true);
+    expect(requiresAudioCapture('per-track')).toBe(true);
+  });
+});
+
+describe('supportsCaptionTranscriptSource', () => {
+  it('включён только на Meet', () => {
+    expect(supportsCaptionTranscriptSource('meet')).toBe(true);
+    expect(supportsCaptionTranscriptSource('pachca')).toBe(false);
+    expect(supportsCaptionTranscriptSource('teams')).toBe(false);
+    expect(supportsCaptionTranscriptSource('zoom')).toBe(false);
+    expect(supportsCaptionTranscriptSource(undefined)).toBe(false);
   });
 });

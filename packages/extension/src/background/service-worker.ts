@@ -2,7 +2,11 @@
 // Coordinates between popup and offscreen document
 
 import { AUTH_INVALID_TOKEN } from '@skribo/shared';
-import { getPlatformCapabilities, resolveAudioMode } from '../platform/audio-mode-capabilities';
+import {
+  getPlatformCapabilities,
+  requiresAudioCapture,
+  resolveTranscriptSource,
+} from '../platform/audio-mode-capabilities';
 import {
   TOGGLE_WIDGET_IN_ACTIVE_TAB,
   type WidgetToggleResult,
@@ -41,6 +45,7 @@ let activeRecordingStartMessage: {
   language?: string;
   platform?: string;
   audioMode?: 'mixed' | 'per-track';
+  transcriptSource?: 'mixed' | 'per-track' | 'meet-captions';
 } | null = null;
 let perTrackRecoveryInProgress = false;
 
@@ -403,14 +408,20 @@ async function recoverPerTrackSession(reason: string): Promise<void> {
 // Helper function for offscreen recording
 function startRecordingOffscreen(message: any, sendResponse: (response: any) => void) {
   const platformCapabilities = getPlatformCapabilities(message.platform);
-  const audioMode = resolveAudioMode(message.audioMode, message.platform);
+  const transcriptSource = resolveTranscriptSource(
+    message.transcriptSource ?? message.audioMode,
+    message.platform,
+  );
+  const audioMode = transcriptSource === 'meet-captions' ? 'mixed' : transcriptSource;
   currentAudioMode = audioMode;
   resetAudioLevels();
   broadcastAudioLevels();
   const shouldSkipTabCapture =
-    platformCapabilities.supportsPerTrackAudioMode && audioMode === 'per-track';
+    !requiresAudioCapture(transcriptSource) ||
+    (platformCapabilities.supportsPerTrackAudioMode && transcriptSource === 'per-track');
 
   console.log('startRecordingOffscreen mode', {
+    transcriptSource,
     platform: message.platform,
     audioMode,
     shouldSkipTabCapture,
@@ -475,6 +486,7 @@ function startRecordingOffscreen(message: any, sendResponse: (response: any) => 
             language: message.language || 'ru-RU',
             platform: message.platform,
             audioMode,
+            transcriptSource,
             token: await getSkriboToken(),
             resumeMeetingId: await resumeMeetingIdForStart(),
           })
@@ -526,6 +538,7 @@ function startRecordingOffscreen(message: any, sendResponse: (response: any) => 
                 language: message.language || 'ru-RU',
                 platform: message.platform,
                 audioMode,
+                transcriptSource,
                 token: await getSkriboToken(),
                 resumeMeetingId: await resumeMeetingIdForStart(),
               })
@@ -810,11 +823,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (sender.tab?.id) {
       recordingTabId = sender.tab.id;
     }
-    currentAudioMode = resolveAudioMode(message.audioMode, message.platform);
+    const transcriptSourceForStart = resolveTranscriptSource(
+      message.transcriptSource ?? message.audioMode,
+      message.platform,
+    );
+    currentAudioMode = transcriptSourceForStart === 'meet-captions' ? 'mixed' : transcriptSourceForStart;
     activeRecordingStartMessage = {
       language: message.language,
       platform: message.platform,
       audioMode: currentAudioMode,
+      transcriptSource: transcriptSourceForStart,
     };
     // Identify the call from its url, then let the remembered meeting decide: pressing start
     // again inside the same call continues it, a different call opens a new one.

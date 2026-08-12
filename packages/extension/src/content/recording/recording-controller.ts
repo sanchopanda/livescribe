@@ -1,4 +1,4 @@
-import type { AudioMode } from '../platform/platform-adapter';
+import type { TranscriptSource } from '../platform/platform-adapter';
 import type { PlatformForStart } from '../platform/platform-detector';
 
 interface TrackModeController {
@@ -12,7 +12,7 @@ interface RecordingControllerDeps {
   setIsCapturing: (value: boolean) => void;
   getSelectedLanguage: () => string;
   getPlatformForStartMessage: () => PlatformForStart;
-  getAudioMode: () => AudioMode;
+  getTranscriptSource: () => TranscriptSource;
   shouldLogAudioMode: () => boolean;
   updateStatus: (status: 'idle' | 'recording' | 'error' | 'waiting', error?: string) => void;
   startSpeakerTracking: () => void;
@@ -33,13 +33,14 @@ export class RecordingController {
       const language = this.deps.getSelectedLanguage();
 
       const response = await new Promise<any>((resolve) => {
-        const audioMode = this.deps.getAudioMode();
+        const transcriptSource = this.deps.getTranscriptSource();
         chrome.runtime.sendMessage(
           {
             type: 'START_RECORDING',
             language,
             platform: this.deps.getPlatformForStartMessage(),
-            audioMode,
+            audioMode: transcriptSource === 'meet-captions' ? 'mixed' : transcriptSource,
+            transcriptSource,
           },
           resolve,
         );
@@ -65,7 +66,7 @@ export class RecordingController {
       if (this.deps.shouldLogAudioMode()) {
         console.log('[LiveScribe] audio mode', {
           platform: this.deps.getPlatformForStartMessage(),
-          mode: this.deps.getAudioMode(),
+          source: this.deps.getTranscriptSource(),
         });
       }
 

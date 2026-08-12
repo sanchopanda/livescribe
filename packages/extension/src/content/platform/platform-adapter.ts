@@ -2,6 +2,7 @@ import { getPlatformForStartMessage, type PlatformForStart } from './platform-de
 import {
   getPlatformCapabilities,
   supportsPerTrackAudioMode,
+  type TranscriptSource,
 } from '../../platform/audio-mode-capabilities';
 import { getPachcaActiveSpeaker } from '../platforms/pachca/speaker/active-speaker-dom';
 import { getTeamsActiveSpeaker } from '../platforms/teams/speaker/active-speaker-dom';
@@ -11,8 +12,8 @@ import {
   setPachcaAudioMode,
 } from '../platforms/pachca/config/audio-mode';
 import {
-  getMeetAudioMode,
-  setMeetAudioMode,
+  getMeetTranscriptSource,
+  setMeetTranscriptSource,
 } from '../platforms/meet/config/audio-mode';
 import { PachcaTrackModeController } from '../platforms/pachca/recording/track-mode-controller';
 import { MeetTrackModeController } from '../platforms/meet/recording/track-mode-controller';
@@ -33,13 +34,14 @@ interface ActiveSpeakerInfo {
   speaker: string | null;
 }
 
-export type AudioMode = 'per-track' | 'mixed';
+export type { TranscriptSource } from '../../platform/audio-mode-capabilities';
 
 export interface PlatformAdapter {
   getPlatform: () => PlatformForStart;
   supportsAudioModeSelection: () => boolean;
-  getAudioMode: () => AudioMode;
-  setAudioMode: (mode: AudioMode) => void;
+  supportsCaptionSourceSelection: () => boolean;
+  getTranscriptSource: () => TranscriptSource;
+  setTranscriptSource: (source: TranscriptSource) => void;
   getActiveSpeaker: () => ActiveSpeakerInfo | null;
   getTrackModeController: () => TrackModeController;
 }
@@ -79,16 +81,21 @@ export function createPlatformAdapter(params: PlatformAdapterParams): PlatformAd
   return {
     getPlatform: () => platform,
     supportsAudioModeSelection: () => capabilities.supportsPerTrackAudioMode,
-    getAudioMode: (): AudioMode => {
-      if (!supportsPerTrackAudioMode(platform)) return 'mixed';
+    supportsCaptionSourceSelection: () => capabilities.supportsCaptionSource,
+    getTranscriptSource: (): TranscriptSource => {
+      if (platform === 'meet') return getMeetTranscriptSource();
       if (platform === 'pachca') return getPachcaAudioMode();
-      if (platform === 'meet') return getMeetAudioMode();
+      if (!supportsPerTrackAudioMode(platform)) return 'mixed';
       return 'mixed';
     },
-    setAudioMode: (mode) => {
-      if (!supportsPerTrackAudioMode(platform)) return;
-      if (platform === 'pachca') setPachcaAudioMode(mode);
-      if (platform === 'meet') setMeetAudioMode(mode);
+    setTranscriptSource: (source) => {
+      if (platform === 'meet') {
+        setMeetTranscriptSource(source);
+        return;
+      }
+      if (platform === 'pachca' && source !== 'meet-captions') {
+        setPachcaAudioMode(source);
+      }
     },
     getActiveSpeaker: () => {
       if (!platform || !capabilities.supportsSpeakerDomDetection) {

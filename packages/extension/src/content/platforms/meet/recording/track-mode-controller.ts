@@ -1,4 +1,4 @@
-import { getMeetAudioMode } from '../config/audio-mode';
+import { getMeetTranscriptSource } from '../config/audio-mode';
 import { MeetTrackTranscriber } from '../audio/per-track/track-transcriber';
 
 interface MeetTrackModeControllerParams {
@@ -13,7 +13,7 @@ export class MeetTrackModeController {
   constructor(private readonly params: MeetTrackModeControllerParams) {}
 
   ensureStarted(reason: string): void {
-    const mode = getMeetAudioMode();
+    const mode = getMeetTranscriptSource();
     if (mode !== 'per-track') {
       console.log('[LiveScribe][Meet][TrackTranscriber] skip start: mixed mode enabled', { reason });
       return;
@@ -36,7 +36,7 @@ export class MeetTrackModeController {
   }
 
   scheduleStartRetry(reason: string, delayMs = 600): void {
-    if (getMeetAudioMode() !== 'per-track') return;
+    if (getMeetTranscriptSource() !== 'per-track') return;
 
     if (this.retryTimerId !== null) {
       clearTimeout(this.retryTimerId);
