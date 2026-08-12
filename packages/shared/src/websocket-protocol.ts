@@ -30,11 +30,45 @@ export interface RenameParticipantMessage {
   speaker: string;
 }
 
+/**
+ * Откуда берётся текст встречи.
+ *
+ * `per-track` и `mixed` — захват аудио с распознаванием на бэкенде (Deepgram). `meet-captions` —
+ * готовый текст из собственных субтитров Google Meet: аудио не захватывается вообще, STT-провайдер
+ * для такой сессии не создаётся, платить за минуты не нужно (LS-36).
+ */
+export type TranscriptSource = 'per-track' | 'mixed' | 'meet-captions';
+
+/**
+ * Финальная реплика, снятая с субтитров платформы.
+ *
+ * Партиалов здесь не бывает по устройству: Meet переписывает один и тот же узел, пока уточняет
+ * фразу, и клиент рисует эти правки у себя, ничего не отправляя. В базу должна попасть одна
+ * запись на фразу, а не по одной на каждую правку.
+ *
+ * `confidence` нет намеренно: Meet не сообщает уверенность, а выдумать 1.0 значило бы записать в
+ * базу ложное «распознано наверняка».
+ */
+export interface CaptionMessage {
+  type: 'caption';
+  sessionId: string;
+  text: string;
+  speaker: string | null;
+  /** Момент финализации фразы на клиенте (`Date.now()`). */
+  timestamp: number;
+}
+
 export interface StartSessionMessage {
   type: 'start';
   language: 'ru-RU' | 'en-US';
   platform?: 'meet' | 'zoom' | 'teams' | 'pachca';
   audioMode?: 'per-track' | 'mixed';
+  /**
+   * Источник транскрипта (LS-36). Отдельное поле, а не расширение `audioMode`: расширение и
+   * бэкенд деплоятся независимо, и старая сборка расширения продолжает присылать только
+   * `audioMode` — бэкенд читает `transcriptSource ?? audioMode`.
+   */
+  transcriptSource?: TranscriptSource;
   token?: string;
   /**
    * Continue the transcript of a meeting already in progress instead of opening a new one.
@@ -51,6 +85,7 @@ export interface StopSessionMessage {
 
 export type ClientMessage =
   | AudioChunkMessage
+  | CaptionMessage
   | SpeakerUpdateMessage
   | RenameParticipantMessage
   | StartSessionMessage
