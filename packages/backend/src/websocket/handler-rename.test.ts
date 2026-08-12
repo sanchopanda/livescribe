@@ -6,9 +6,8 @@ describe('buildParticipantRenamePlan', () => {
     expect(
       buildParticipantRenamePlan({
         meetingId: 'meeting_1',
-        previousSpeaker: 'Participant 33f1a44f',
-        nextSpeaker: 'Сергей Чумеров',
         placeholderSpeaker: 'Participant 33f1a44f',
+        nextSpeaker: 'Сергей Чумеров',
       }),
     ).toEqual({
       meetingId: 'meeting_1',
@@ -21,9 +20,8 @@ describe('buildParticipantRenamePlan', () => {
     expect(
       buildParticipantRenamePlan({
         meetingId: null,
-        previousSpeaker: 'Participant 33f1a44f',
-        nextSpeaker: 'Сергей Чумеров',
         placeholderSpeaker: 'Participant 33f1a44f',
+        nextSpeaker: 'Сергей Чумеров',
       }),
     ).toEqual({
       meetingId: null,
@@ -32,25 +30,12 @@ describe('buildParticipantRenamePlan', () => {
     });
   });
 
-  it('ничего не делает, когда прежняя подпись неизвестна', () => {
-    // Без прежней подписи невозможно выбрать сегменты: колонки participantId в схеме нет.
+  it('ничего не делает, когда имя совпадает с заглушкой', () => {
     expect(
       buildParticipantRenamePlan({
         meetingId: 'meeting_1',
-        previousSpeaker: undefined,
-        nextSpeaker: 'Сергей Чумеров',
         placeholderSpeaker: 'Participant 33f1a44f',
-      }),
-    ).toBeNull();
-  });
-
-  it('ничего не делает, когда имя не изменилось', () => {
-    expect(
-      buildParticipantRenamePlan({
-        meetingId: 'meeting_1',
-        previousSpeaker: 'Сергей Чумеров',
-        nextSpeaker: 'Сергей Чумеров',
-        placeholderSpeaker: 'Participant 33f1a44f',
+        nextSpeaker: 'Participant 33f1a44f',
       }),
     ).toBeNull();
   });
@@ -59,34 +44,50 @@ describe('buildParticipantRenamePlan', () => {
     expect(
       buildParticipantRenamePlan({
         meetingId: 'meeting_1',
-        previousSpeaker: 'Participant 33f1a44f',
-        nextSpeaker: '   ',
         placeholderSpeaker: 'Participant 33f1a44f',
+        nextSpeaker: '   ',
       }),
     ).toBeNull();
   });
 
-  it('не трогает сохранённые сегменты, если прежняя подпись — настоящее имя, а не техническая заглушка', () => {
-    // Meet передал слот дорожки другому участнику: прежняя подпись 'Иван Иванов' принадлежит
-    // реальному человеку. Если применить bulk-переименование по этой подписи, оно затронет и его
-    // настоящие реплики — переименовать их в "Мария Петрова" значило бы уничтожить верную атрибуцию.
-    expect(
-      buildParticipantRenamePlan({
-        meetingId: 'meeting_1',
-        previousSpeaker: 'Иван Иванов',
-        nextSpeaker: 'Мария Петрова',
-        placeholderSpeaker: 'Participant 33f1a44f',
-      }),
-    ).toBeNull();
+  it('selector — всегда заглушка, а не текущая подпись участника: порядок сообщений не важен', () => {
+    // A chunk carrying the confirmed name can arrive before the rename_participant message that
+    // announces it, so by the time the plan is built the in-memory label may already read as a
+    // real name. The guarantee this pins: previousSpeaker in the plan is always the deterministic
+    // placeholder, never whatever label happens to be held in memory — so the backfill's
+    // correctness cannot depend on which message won the race.
+    const plan = buildParticipantRenamePlan({
+      meetingId: 'meeting_1',
+      placeholderSpeaker: 'Participant 33f1a44f',
+      nextSpeaker: 'Мария Петрова',
+    });
+
+    expect(plan?.previousSpeaker).toBe('Participant 33f1a44f');
+  });
+
+  it('второе переименование той же дорожки (Meet отдал слот другому участнику) тоже строит план с плейсхолдером-селектором', () => {
+    // Idempotent by construction: once the first rename has run, no stored row still carries the
+    // placeholder, so re-issuing the same UPDATE on a later rename of the same track matches zero
+    // rows — it never touches the real name left behind by the previous occupant.
+    const plan = buildParticipantRenamePlan({
+      meetingId: 'meeting_1',
+      placeholderSpeaker: 'Participant 33f1a44f',
+      nextSpeaker: 'Мария Петрова',
+    });
+
+    expect(plan).toEqual({
+      meetingId: 'meeting_1',
+      previousSpeaker: 'Participant 33f1a44f',
+      nextSpeaker: 'Мария Петрова',
+    });
   });
 
   it('сравнивает подпись-заглушку с обрезкой пробелов по краям', () => {
     expect(
       buildParticipantRenamePlan({
         meetingId: 'meeting_1',
-        previousSpeaker: '  Participant 33f1a44f  ',
+        placeholderSpeaker: '  Participant 33f1a44f  ',
         nextSpeaker: 'Сергей Чумеров',
-        placeholderSpeaker: 'Participant 33f1a44f',
       }),
     ).toEqual({
       meetingId: 'meeting_1',
