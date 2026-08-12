@@ -79,6 +79,47 @@ export function buildTranscriptSegmentRecord(
 }
 
 /**
+ * Реплика субтитров платформы, приведённая к строке транскрипта.
+ *
+ * Проходит через `buildTranscriptSegmentRecord`, чтобы обе дороги — распознавание аудио и
+ * субтитры — писали сегменты одним и тем же кодом: правила «только финалы», «только для сессии с
+ * Meeting», смещение `tsMs` от начала встречи не должны разъезжаться между источниками.
+ *
+ * Exported for tests.
+ */
+export function buildCaptionSegmentRecord(
+  session: SessionLike,
+  message: { text?: unknown; speaker?: unknown },
+  nowMs: number,
+): TranscriptSegmentRecord | null {
+  const text = typeof message.text === 'string' ? message.text.trim() : '';
+  if (!text) return null;
+
+  const rawSpeaker = typeof message.speaker === 'string' ? message.speaker.trim() : '';
+  const speaker = rawSpeaker.length > 0 ? rawSpeaker : undefined;
+
+  return buildTranscriptSegmentRecord(
+    session,
+    { isFinal: true, text, confidence: undefined },
+    speaker,
+    nowMs,
+  );
+}
+
+/**
+ * Нужно ли этой сессии соединение со STT-провайдером.
+ *
+ * Для `meet-captions` распознаёт сам Meet, аудио на бэкенд не приходит вообще — открытый стрим
+ * Deepgram висел бы впустую, тратил минуты и заливал клиента статусами про распознавание,
+ * которого в этом режиме нет.
+ *
+ * Exported for tests.
+ */
+export function shouldOpenSttStream(transcriptSource: string | null | undefined): boolean {
+  return transcriptSource !== 'meet-captions';
+}
+
+/**
  * Which stored segments a late-arriving speaker name applies to. Segments carry only the label,
  * not the participant id, so the old label is the only selector available for a bulk rename —
  * but only the placeholder label is safe to use that way. It is unique per track inside a
@@ -327,13 +368,18 @@ export function registerWebSocketHandler(server: FastifyInstance) {
 
             const language = message.language || 'ru-RU';
             const audioMode = (message as any).audioMode || null;
+            // Старая сборка расширения присылает только audioMode — читаем с фолбэком, чтобы
+            // прежние клиенты вели себя ровно как раньше.
+            const transcriptSource = ((message as any).transcriptSource || audioMode) as
+              | string
+              | null;
             activeLanguage = language;
             activeProviderType = getSTTProviderType();
             await destroyParticipantProviders();
             participantChunkCount.clear();
 
             server.log.info(
-              { conn, language: activeLanguage, provider: activeProviderType, platform: (message as any).platform ?? null, audioMode },
+              { conn, language: activeLanguage, provider: activeProviderType, platform: (message as any).platform ?? null, audioMode, transcriptSource },
               'Start message received',
             );
 
@@ -382,7 +428,7 @@ export function registerWebSocketHandler(server: FastifyInstance) {
                       data: {
                         userId: tok.userId,
                         platform: (message as any).platform ?? null,
-                        audioMode: audioMode ?? null,
+                        audioMode: transcriptSource ?? null,
                       },
                     });
                     meetingId = meeting.id;
@@ -429,46 +475,53 @@ export function registerWebSocketHandler(server: FastifyInstance) {
 
             // Create STT provider (optional - audio will still be saved even if STT fails)
             let sttProvider: any = null;
-            try {
-              const providerType = activeProviderType;
-              // server.log.info(`Using STT provider: ${providerType} (from env: ${process.env.STT_PROVIDER || 'not set'})`);
-              sttProvider = createSTTProvider(providerType);
-              sttProvider.onStatusChange?.((status: STTStatus) => {
-                sttStatuses.set('session', status);
-                sendSttStatusIfChanged();
-              });
-
-              // Create callback for real-time transcriptions (for streaming providers like Deepgram)
-              const onResult = (result: any) => {
-                const session = sessionId ? sessionManager.getSession(sessionId) : undefined;
-                const resolvedSpeaker = resolveSpeakerForSegment(session, result);
-
-                sendTranscript(result, resolvedSpeaker);
-                // server.log.debug(`Transcription (${result.isFinal ? 'final' : 'partial'}): ${result.text}`);
-
-                persistFinalSegment(result, resolvedSpeaker);
-              };
-              
-              await sttProvider.initialize(language, onResult);
+            if (!shouldOpenSttStream(transcriptSource)) {
               server.log.info(
-                { conn, provider: providerType, language },
-                'Session STT provider initialized',
+                { conn, transcriptSource },
+                'Transcript comes from platform captions; no STT stream opened',
               );
-            } catch {
-              // server.log.error(`STT provider initialization failed (audio will still be saved): ${(err as Error).message}`);
-              // server.log.error(err, 'STT initialization error details');
-              // Set sttProvider to null to ensure it's not used
-              sttProvider = null;
-              // Continue without STT - audio will still be saved to files
-              // Send warning to client
-              const warningResponse: ServerMessage = {
-                type: 'error',
-                code: 'STT_UNAVAILABLE',
-                message: 'STT not available. Audio will be saved but not transcribed.',
-              };
-              connection.send(JSON.stringify(warningResponse));
-              server.log.warn({ conn, provider: activeProviderType }, 'Session STT unavailable');
-              // Continue anyway - create session without STT provider
+            } else {
+              try {
+                const providerType = activeProviderType;
+                // server.log.info(`Using STT provider: ${providerType} (from env: ${process.env.STT_PROVIDER || 'not set'})`);
+                sttProvider = createSTTProvider(providerType);
+                sttProvider.onStatusChange?.((status: STTStatus) => {
+                  sttStatuses.set('session', status);
+                  sendSttStatusIfChanged();
+                });
+
+                // Create callback for real-time transcriptions (for streaming providers like Deepgram)
+                const onResult = (result: any) => {
+                  const session = sessionId ? sessionManager.getSession(sessionId) : undefined;
+                  const resolvedSpeaker = resolveSpeakerForSegment(session, result);
+
+                  sendTranscript(result, resolvedSpeaker);
+                  // server.log.debug(`Transcription (${result.isFinal ? 'final' : 'partial'}): ${result.text}`);
+
+                  persistFinalSegment(result, resolvedSpeaker);
+                };
+
+                await sttProvider.initialize(language, onResult);
+                server.log.info(
+                  { conn, provider: providerType, language },
+                  'Session STT provider initialized',
+                );
+              } catch {
+                // server.log.error(`STT provider initialization failed (audio will still be saved): ${(err as Error).message}`);
+                // server.log.error(err, 'STT initialization error details');
+                // Set sttProvider to null to ensure it's not used
+                sttProvider = null;
+                // Continue without STT - audio will still be saved to files
+                // Send warning to client
+                const warningResponse: ServerMessage = {
+                  type: 'error',
+                  code: 'STT_UNAVAILABLE',
+                  message: 'STT not available. Audio will be saved but not transcribed.',
+                };
+                connection.send(JSON.stringify(warningResponse));
+                server.log.warn({ conn, provider: activeProviderType }, 'Session STT unavailable');
+                // Continue anyway - create session without STT provider
+              }
             }
 
             // Create session with STT provider
@@ -658,6 +711,35 @@ export function registerWebSocketHandler(server: FastifyInstance) {
               }
             }
 
+            break;
+          }
+
+          case 'caption': {
+            if (!sessionId) {
+              server.log.warn({ conn }, 'Received caption without active session');
+              return;
+            }
+
+            const session = sessionManager.getSession(sessionId);
+            if (!session) {
+              server.log.warn({ conn, sessionId }, 'Received caption for missing session');
+              return;
+            }
+
+            const record = buildCaptionSegmentRecord(session, message, Date.now());
+            if (!record) break;
+
+            prisma.transcriptSegment.create({ data: record }).catch((err: Error) =>
+              server.log.warn(
+                { conn, sessionId, error: err.message },
+                'Failed to persist caption segment',
+              ),
+            );
+
+            server.log.info(
+              { conn, sessionId, speaker: record.speaker, textLength: record.text.length },
+              'Caption segment persisted',
+            );
             break;
           }
 
