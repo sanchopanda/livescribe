@@ -73,3 +73,6 @@ build/
 
 # Syncthing folder marker (not part of the project)
 .stfolder/
+
+# Рабочие артефакты субагентов (брифы, отчёты, диффы ревью) — сессионный мусор, не история проекта.
+.superpowers/
