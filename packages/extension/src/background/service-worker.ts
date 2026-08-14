@@ -880,15 +880,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'PARTICIPANT_RENAME') {
+    // Unlike SPEAKER_UPDATE, this reply is load-bearing: a confirmed binding is announced by
+    // TrackSpeakerBinding.observe() exactly once, so the transcriber's 250ms retry walk relies on
+    // this response to tell "delivered" from "not delivered" and decide whether to re-send on the
+    // next tick. Dropping the reply (as this used to do) makes every rename look undelivered
+    // forever, turning an otherwise one-shot send into a message storm for the rest of the call.
     sendToOffscreen({
       type: 'OFFSCREEN_PARTICIPANT_RENAME',
       sessionId: message.sessionId,
       participantId: message.participantId,
       speaker: message.speaker,
-    }).catch(() => {
-      // ignore
-    });
-    return false;
+    })
+      .then((response) => sendResponse(response ?? { success: true }))
+      .catch((err) => sendResponse({ error: err?.message ?? 'Failed to reach offscreen document' }));
+    return true;
   }
 
   if (message.type === 'TRACK_AUDIO_CHUNK') {
