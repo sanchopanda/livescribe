@@ -298,12 +298,18 @@ export class MeetTrackTranscriber {
   }
 
   /**
-   * Sends a confirmed name and records it as delivered only on genuine success. A rejected
-   * promise (service worker inactive) or a truthy `{ error }` reply (offscreen had no OPEN
-   * socket to send it over) both mean the backend never saw it, so the entry must stay unset —
-   * that is what makes the 250 ms tick's redelivery walk retry it.
+   * Sends a confirmed name and records it as delivered — optimistically, before the round-trip
+   * resolves. The 250ms tick fires this with `void` (not awaited) and then immediately runs the
+   * redelivery walk in the same synchronous turn; `binding.speakerFor()` already reflects the new
+   * name at that point, but the actual `sendMessage` reply cannot possibly have arrived yet. If
+   * the entry were only written after `await`, the walk would find nothing recorded for the
+   * participant just confirmed and fire a duplicate send on every single confirmation. Writing it
+   * up front closes that window; a genuine failure (rejection, or a reply carrying `error`) rolls
+   * the entry back so the next tick's walk still sees it as undelivered and retries it.
    */
   private async sendParticipantRename(participantId: string, speaker: string): Promise<void> {
+    this.sentRenameByParticipantId.set(participantId, speaker);
+
     try {
       const reply = await chrome.runtime.sendMessage({
         type: 'PARTICIPANT_RENAME',
@@ -312,11 +318,25 @@ export class MeetTrackTranscriber {
         speaker,
       });
 
-      if (reply && !(reply as { error?: unknown }).error) {
-        this.sentRenameByParticipantId.set(participantId, speaker);
+      if (!reply || (reply as { error?: unknown }).error) {
+        this.rollbackSentRename(participantId, speaker);
       }
     } catch {
-      // Not delivered — service worker may be inactive momentarily; leave unset so it retries.
+      // Not delivered — service worker may be inactive momentarily; roll back so it retries.
+      this.rollbackSentRename(participantId, speaker);
+    }
+  }
+
+  /**
+   * Undoes the optimistic write from `sendParticipantRename`, but only if it is still the entry
+   * that call made. A later, faster-resolving send for the same participant (e.g. a subsequent
+   * rename to a different name) may have already overwritten it by the time this failure surfaces
+   * — deleting unconditionally would wipe out that newer, successfully delivered entry instead of
+   * this call's own failed one.
+   */
+  private rollbackSentRename(participantId: string, speaker: string): void {
+    if (this.sentRenameByParticipantId.get(participantId) === speaker) {
+      this.sentRenameByParticipantId.delete(participantId);
     }
   }
 
